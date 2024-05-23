@@ -177,7 +177,8 @@ class Fragments:
         """
 
         Raw procedure for matching summary in text, described in paper.
-
+        It finds maximal non-overlapping-in-`a` common substrings of `a`
+        and `b` in a greedy manner.
         """
 
         self._matches = []

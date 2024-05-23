@@ -99,10 +99,6 @@ def evaluate(  # noqa: C901
 
     # ===== unpack results and sort back in order and return control to Task =====
     for task_example_id, prediction_list in example_id_response_dict.items():
-        # ===== Unpack the request =====
-        prediction_list.sort(
-            key=lambda x: x.request_index
-        )  # When we use Loglikelihood for several tokens we have all the options here
         model_responses = [x.model_response for x in prediction_list]
         cur_task_name = task_example_id.task_name.rsplit("|", 1)[0]
 

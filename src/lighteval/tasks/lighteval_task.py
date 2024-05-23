@@ -414,21 +414,21 @@ class LightevalTask:
                 task.
         """
         request_types = []
-        if self.has_metric_category[MetricCategory.TARGET_PERPLEXITY]:
-            request_types.append(RequestType.LOGLIKELIHOOD)
-        if self.has_metric_category[MetricCategory.MULTICHOICE]:
+        if (
+            self.has_metric_category[MetricCategory.TARGET_PERPLEXITY]
+            or self.has_metric_category[MetricCategory.MULTICHOICE]
+        ):
             request_types.append(RequestType.LOGLIKELIHOOD)
         if self.has_metric_category[MetricCategory.MULTICHOICE_ONE_TOKEN]:
             request_types.append(RequestType.LOGLIKELIHOOD_SINGLE_TOKEN)
         if self.has_metric_category[MetricCategory.PERPLEXITY]:
             request_types.append(RequestType.LOGLIKELIHOOD_ROLLING)
-        if self.has_metric_category[MetricCategory.GENERATIVE]:
-            request_types.append(RequestType.GREEDY_UNTIL)
-        if self.has_metric_category[MetricCategory.GENERATIVE_LOGPROB]:
-            request_types.append(RequestType.GREEDY_UNTIL)
-        if self.has_metric_category[MetricCategory.GENERATIVE_SAMPLING]:
-            request_types.append(RequestType.GREEDY_UNTIL)
-        if self.has_metric_category[MetricCategory.LLM_AS_JUDGE]:
+        if (
+            self.has_metric_category[MetricCategory.GENERATIVE]
+            or self.has_metric_category[MetricCategory.GENERATIVE_LOGPROB]
+            or self.has_metric_category[MetricCategory.GENERATIVE_SAMPLING]
+            or self.has_metric_category[MetricCategory.LLM_AS_JUDGE]
+        ):
             request_types.append(RequestType.GREEDY_UNTIL)
         if self.has_metric_category[MetricCategory.LLM_AS_JUDGE_MULTI_TURN]:
             request_types.append(RequestType.GREEDY_UNTIL_MULTI_TURN)
@@ -436,7 +436,7 @@ class LightevalTask:
         if len(request_types) == 0:
             raise NotImplementedError(f"Request type not implemented for task {self.name}")
 
-        return list(set(request_types))
+        return request_types
 
     def construct_requests(
         self, formatted_doc: Doc, context: str, document_id_seed: str, current_task_name: str
@@ -524,6 +524,18 @@ class LightevalTask:
                     generation_size=self.generation_size,
                 )
             ]
+        if self.has_metric_category[MetricCategory.LLM_AS_JUDGE]:
+            requests[RequestType.GREEDY_UNTIL] += [
+                GreedyUntilRequest(
+                    task_name=current_task_name,
+                    example_index=document_id_seed,
+                    request_index=0,
+                    context=context,
+                    stop_sequence=self.stop_sequence,
+                    generation_size=self.generation_size,
+                    num_samples=1,
+                )
+            ]
 
         return requests
 
@@ -545,24 +557,6 @@ class LightevalTask:
                 results=results, formatted_doc=formatted_doc, metrics=self.metrics
             )
             outputs.update(cur_outputs)
-        if self.has_metric_category[MetricCategory.PERPLEXITY]:
-            results, cur_outputs = apply_perplexity_metric(
-                results=results, formatted_doc=formatted_doc, metrics=self.metrics
-            )
-            outputs.update(cur_outputs)
-        if (
-            self.has_metric_category[MetricCategory.GENERATIVE]
-            or self.has_metric_category[MetricCategory.GENERATIVE_SAMPLING]
-            or self.has_metric_category[MetricCategory.GENERATIVE_LOGPROB]
-        ):
-            results, cur_outputs = apply_generative_metric(
-                results=results,
-                formatted_doc=formatted_doc,
-                metrics=self.metrics,
-                output_regex=self.output_regex,
-                max_num_samples=max(self.num_samples),
-            )
-            outputs.update(cur_outputs)
         if self.has_metric_category[MetricCategory.MULTICHOICE]:
             results, cur_outputs = apply_multichoice_metric(
                 results=results, formatted_doc=formatted_doc, metrics=self.metrics
@@ -573,15 +567,34 @@ class LightevalTask:
                 results=results, formatted_doc=formatted_doc, metrics=self.metrics
             )
             outputs.update(cur_outputs)
+        if self.has_metric_category[MetricCategory.PERPLEXITY]:
+            results, cur_outputs = apply_perplexity_metric(
+                results=results, formatted_doc=formatted_doc, metrics=self.metrics
+            )
+            outputs.update(cur_outputs)
         if (
-            self.has_metric_category[MetricCategory.LLM_AS_JUDGE_MULTI_TURN]
-            or self.has_metric_category[MetricCategory.LLM_AS_JUDGE]
+            self.has_metric_category[MetricCategory.GENERATIVE]
+            or self.has_metric_category[MetricCategory.GENERATIVE_LOGPROB]
+            or self.has_metric_category[MetricCategory.GENERATIVE_SAMPLING]
+        ):
+            results, cur_outputs = apply_generative_metric(
+                results=results,
+                formatted_doc=formatted_doc,
+                metrics=self.metrics,
+                output_regex=self.output_regex,
+                max_num_samples=max(self.num_samples),
+            )
+            outputs.update(cur_outputs)
+        if (
+            self.has_metric_category[MetricCategory.LLM_AS_JUDGE]
+            or self.has_metric_category[MetricCategory.LLM_AS_JUDGE_MULTI_TURN]
         ):
             results, cur_outputs = apply_llm_as_judge_metric(
                 results=results, formatted_doc=formatted_doc, metrics=self.metrics
             )
             outputs.update(cur_outputs)
 
+        assert len(results) == 0
         return outputs
 
     def aggregation(self):

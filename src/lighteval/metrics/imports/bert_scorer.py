@@ -205,6 +205,7 @@ def greedy_cos_idf(
     if all_layers:
         precision_scale = precision_scale.unsqueeze(0).expand(L, B, -1).contiguous().view_as(word_precision)
         recall_scale = recall_scale.unsqueeze(0).expand(L, B, -1).contiguous().view_as(word_recall)
+    # P & R could become negative as the result of Cosine Sim.        
     P = (word_precision * precision_scale).sum(dim=1)
     R = (word_recall * recall_scale).sum(dim=1)
     F = 2 * P * R / (P + R)

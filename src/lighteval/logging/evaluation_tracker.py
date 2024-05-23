@@ -180,7 +180,7 @@ class EvaluationTracker:
             # Sort column names to make it easier later
             dataset = dataset.select_columns(sorted(column_names))
             # Save the dataset to a Parquet file
-            dataset.to_parquet(output_file_details.as_posix())
+            dataset.to_parquet(output_file_details.absolute().as_uri())
 
         if push_results_to_hub:
             self.api.upload_folder(

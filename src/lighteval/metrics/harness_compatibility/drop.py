@@ -28,7 +28,19 @@ from scipy.optimize import linear_sum_assignment
 
 
 def drop_metrics(predictions: list[str], formatted_doc, **kwargs):  # noqa: C901
-    """F1 score from bag of words: comes from Harness Drop
+    """F1 score from bag of words: comes from Harness Drop. DROP offers two metrics,
+    a quasi exact match and a numeracy-focused F1 score. Quasi in the sense that it
+    does some normalizations before matching and numeracy-focused in the sense that
+    if there's number mismatch between the target and prediction F1 score is set to 0.
+    F1 score is computed using the intersection of target and prediction's BoW
+    representations with the additional spice that if the answer and/or prediction is
+    comprised of multiple spans, a greedy matching is done between the two sets of spans
+    (based on the very BoW overlap) and the average over F1 of pairs is returned.
+    DROP also accepts multiple answers in which case, the maximum of F1/ Exact Match
+    between prediction and the answers is taken.
+
+    For more information, please refer to the section 5 of the DROP paper (https://aclanthology.org/N19-1246/).
+    
     Todo: this code is really hard to follow, simplify when possible
     """
 

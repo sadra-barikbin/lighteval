@@ -477,7 +477,11 @@ class BaseModel(LightevalModel):
             list[GenerateReturn]: list of generated responses.
         """
         for request in requests:
-            request.stop_sequence = as_list(request.stop_sequence) + [self.tokenizer.eos_token]
+            request.stop_sequence = (
+                as_list(request.stop_sequence)
+                if request.stop_sequence is not None
+                else [] + [self.tokenizer.eos_token]
+            )
             request.tokenized_context = self.tok_encode(request.context)
 
         dataset = GenerativeTaskDataset(requests=requests, dataset_splits=self.DATASET_SPLITS)
@@ -526,6 +530,7 @@ class BaseModel(LightevalModel):
                     # the case! Because of that we only use batch size of 1
                     stop_tokens = batch[0].stop_sequence
 
+                # what if `batch[0].generation_size` is None?
                 max_new_tokens = batch[0].generation_size
                 returns_logits = batch[0].use_logits
                 num_samples = batch[0].num_samples
@@ -568,7 +573,7 @@ class BaseModel(LightevalModel):
                     input_lengths=[len(item == 1) for item in tokenized["attention_mask"]],
                     input_mask=tokenized["attention_mask"],
                     truncated=[
-                        len(c) - tokenized["input_ids"].shape[1] if len(c) > tokenized["input_ids"].shape[1] else 0
+                        max(len(c) - tokenized["input_ids"].shape[1], 0)
                         for c in context
                     ],
                     padded=[sum(mask == 0) for mask in tokenized["attention_mask"]],

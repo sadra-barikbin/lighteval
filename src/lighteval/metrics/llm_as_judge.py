@@ -96,7 +96,7 @@ class JudgeOpenAI:
 
     def evaluate_answer(
         self, questions: list[str], answers: list[str], references: list[str]
-    ) -> tuple[int, list[dict[str, str]], str]:
+    ) -> tuple[list[int], list[dict[str, str]], str]:
         """
         Evaluates an answer using the OpenAI API.
 
@@ -145,10 +145,10 @@ class JudgeOpenAI:
         if len(responses) == 0:
             raise Exception("Failed to get response from the API")
 
-        judgments = [response.choices[0].message.content for response in responses]
-        scores = [self.__process_judge_response(judgment) for judgment in judgments]
+        judgements = [response.choices[0].message.content for response in responses]
+        scores = [self.__process_judge_response(judgement) for judgement in judgements]
 
-        return scores, prompts, judgments
+        return scores, prompts, judgements
 
     def __get_prompts_multi_turn(
         self, questions: list[str], answers: list[str], references: Optional[list[str]]

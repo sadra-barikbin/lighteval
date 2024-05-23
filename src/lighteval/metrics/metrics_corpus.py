@@ -80,6 +80,7 @@ class CorpusLevelF1Score:
         # Multi f1
         f1s = []
         for i in range(self.num_classes):
+            #bug in the line below:
             f1s.append(sklearn.metrics.f1_score(y_true=golds == i, y_pred=preds == i))
         return float(np.mean(f1s))
 
