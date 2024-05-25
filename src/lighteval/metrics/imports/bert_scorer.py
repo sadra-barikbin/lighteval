@@ -377,10 +377,10 @@ class BERTScorer:
         self._num_layers = num_layers
 
         # Building model and tokenizer
-        self._tokenizer = AutoTokenizer.from_pretrained(model_type)
-        self._model = AutoModel.from_pretrained(model_type)
-        self._model.eval()
-        self._model.to(self.device)
+        # self._tokenizer = AutoTokenizer.from_pretrained(model_type)
+        # self._model = AutoModel.from_pretrained(model_type)
+        # self._model.eval()
+        # self._model.to(self.device)
 
         self._idf_dict = None
 

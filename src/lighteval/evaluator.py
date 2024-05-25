@@ -75,8 +75,11 @@ def evaluate(  # noqa: C901
     )
     example_id_response_dict: dict[TaskExampleId, list[RequestIndexModelResponseTuple]] = collections.defaultdict(list)
 
-    for request_type, requests in requests_dict.items():
+    for request_type in RequestType:
+        if request_type not in requests_dict:
+            continue
         hlog(f"Running {request_type} requests")
+        requests = requests_dict[request_type]
         # These are all the request type from the request factory at the moment
         if request_type == RequestType.LOGLIKELIHOOD:
             full_resps = lm.loglikelihood(requests, override_bs=override_bs)

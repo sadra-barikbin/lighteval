@@ -86,7 +86,7 @@ class InferenceEndpointModel(LightevalModel):
                     custom_image={
                         "health_route": "/health",
                         "env": {
-                            # Documentaiton: https://huggingface.co/docs/text-generation-inference/en/basic_tutorials/launcher
+                            # Documentation: https://huggingface.co/docs/text-generation-inference/en/basic_tutorials/launcher
                             "MAX_BATCH_PREFILL_TOKENS": "2048",
                             "MAX_INPUT_LENGTH": "2047",
                             "MAX_TOTAL_TOKENS": "2048",

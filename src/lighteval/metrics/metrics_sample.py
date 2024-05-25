@@ -36,7 +36,7 @@ from nltk.translate.bleu_score import sentence_bleu
 from rouge_score import rouge_scorer, scoring
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-from lighteval.logging.hierarchical_logger import hlog_warn
+from lighteval.logging.hierarchical_logger import hlog_warn, hlog_err
 from lighteval.metrics.imports.bert_scorer import BERTScorer
 from lighteval.metrics.imports.data_stats_metric import DataStatsMetric
 from lighteval.metrics.imports.summac import SummaCZS
@@ -654,7 +654,7 @@ class JudgeLLM:
                 multi_turn=multi_turn,
             )
         except Exception as e:
-            print(f"Could not initialize the JudgeOpenAI model:\n{e}")
+            hlog_err(f"Could not initialize the JudgeOpenAI model:\n{e}")
             self.judge = None
 
     def compute(self, predictions: list[str], formatted_doc: Doc, **kwargs) -> dict[str, float]:
