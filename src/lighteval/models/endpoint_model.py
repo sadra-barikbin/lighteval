@@ -21,6 +21,7 @@
 # SOFTWARE.
 
 import asyncio
+import time
 from typing import Coroutine, List, Optional, Union
 
 import torch
@@ -115,7 +116,7 @@ class InferenceEndpointModel(LightevalModel):
             self.async_client = AsyncInferenceClient(model=config.model, token=env_config.token)
             self.client = InferenceClient(model=config.model, token=env_config.token)
 
-        self.use_async = True  # set to False for debug - async use is faster
+        self.use_async = False  # set to False for debug - async use is faster
 
         self._tokenizer = AutoTokenizer.from_pretrained(self.name)
         self._add_special_tokens = config.add_special_tokens if config.add_special_tokens is not None else False
@@ -176,7 +177,7 @@ class InferenceEndpointModel(LightevalModel):
             stop_sequences=stop_tokens,
             # truncate=,
         )
-
+        time.sleep(1)
         return generated_text
 
     async def __async_process_batch_generate(
@@ -218,7 +219,8 @@ class InferenceEndpointModel(LightevalModel):
                     max_tokens=1,
                 )
                 for request in requests
-            ]
+            ],
+            asyncio.sleep(1 if self.endpoint is None else 0)
         )
 
     def __process_batch_logprob(
@@ -240,7 +242,11 @@ class InferenceEndpointModel(LightevalModel):
     ) -> List[GenerateReturn]:
         for request in requests:
             request.tokenized_context = self.tok_encode(request.context)
-            request.stop_sequence = as_list(request.stop_sequence) + [self.tokenizer.eos_token]
+            request.stop_sequence = (
+                (as_list(request.stop_sequence)
+                if request.stop_sequence is not None
+                else []) + [self.tokenizer.eos_token]
+            )
 
         dataset = GenerativeTaskDataset(requests=requests, dataset_splits=self.DATASET_SPLITS)
         batch_size = override_bs if override_bs is not None else BATCH_SIZE
@@ -291,7 +297,9 @@ class InferenceEndpointModel(LightevalModel):
         dataset = LoglikelihoodDataset(requests=requests, dataset_splits=self.DATASET_SPLITS)
         batch_size = override_bs if override_bs is not None else BATCH_SIZE
         results: List[str] = []
-
+        # Generally here and there I see that we take logits[-len_cont:] as the prob
+        # of cont. given the context while It's correct to take logits[-(len_cont+1):-1]
+        # as the desired value.
         for _, _ in tqdm(
             dataset.splits_start_end_iterator(),
             total=self.DATASET_SPLITS,

@@ -478,9 +478,9 @@ class BaseModel(LightevalModel):
         """
         for request in requests:
             request.stop_sequence = (
-                as_list(request.stop_sequence)
+                (as_list(request.stop_sequence)
                 if request.stop_sequence is not None
-                else [] + [self.tokenizer.eos_token]
+                else []) + [self.tokenizer.eos_token]
             )
             request.tokenized_context = self.tok_encode(request.context)
 

@@ -577,7 +577,6 @@ class LightevalTask:
             or self.has_metric_category[MetricCategory.GENERATIVE_LOGPROB]
             or self.has_metric_category[MetricCategory.GENERATIVE_SAMPLING]
         ):
-            print(results)
             results, cur_outputs = apply_generative_metric(
                 results=results,
                 formatted_doc=formatted_doc,
@@ -749,6 +748,5 @@ def create_requests_from_tasks(  # noqa: C901
                     reqs = task.construct_requests(doc, ctx, doc_id_seed, cur_task_name)
                     for req_type in req_types:
                         requests[req_type].extend(reqs[req_type])
-        print(f"after {task_name}: {requests.keys()}")
 
     return requests, docs
