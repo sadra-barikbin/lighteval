@@ -505,6 +505,7 @@ class MetricsLogger:
                 if isinstance(metric_result, dict):
                     stderr = None  # We skip stderr for some corpus metrics that return dicts
                 else:
+                    # Read on if this stderr is correct for non-mean aggregations.
                     aggregation = task.aggregation()[metric_name]
                     stderr = get_stderr_function(aggregation=aggregation, number_experiments=1000)
                 if stderr is not None and len(metric_values) > 1:

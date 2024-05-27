@@ -105,6 +105,7 @@ def apply_generative_metric(
                 )
             )
         if Metrics[metric].value.category == MetricCategory.GENERATIVE_LOGPROB:
+            #where is logits?
             outputs.update(
                 Metrics[metric].value.compute(
                     golds=golds,

@@ -60,6 +60,7 @@ class LoglikelihoodSingleTokenReturn(ModelReturn):
 @dataclass
 class GenerateReturn(ModelReturn):
     result: str = field(default_factory=str)  # generated text continuation
+    #This shouldn't be logprobs?
     logits: Optional[list[float]] = None  # Generated text logits
 
     def get_result_for_eval(self):
