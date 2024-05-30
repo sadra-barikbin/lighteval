@@ -34,7 +34,8 @@ if is_nanotron_available():
     logger = get_logger(__name__, log_level="INFO")
 elif is_accelerate_available():
     from accelerate.logging import get_logger
-
+    from accelerate import Accelerator
+    Accelerator()
     logger = get_logger(__name__, log_level="INFO")
 else:
     from logging import Logger

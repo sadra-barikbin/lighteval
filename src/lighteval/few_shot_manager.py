@@ -342,7 +342,7 @@ class FewShotSampler:
 
         return output, num_effective_fewshots
 
-    def get_fewshot_seeds(self, few_shot_iterations: int = None) -> list[int]:
+    def get_fewshot_seeds(self, few_shot_iterations: int = 0) -> list[int]:
         """Return a list of seeds for sampling several times the few shots"""
         # todo @saylortwift: check which seed for bb
         if few_shot_iterations <= 1:

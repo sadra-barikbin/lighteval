@@ -112,7 +112,7 @@ class InferenceEndpointModel(LightevalModel):
         else:  # Free inference client
             self.endpoint = None
             self.name = config.model
-            self.revision = "default"
+            self.revision = "main"
             self.async_client = AsyncInferenceClient(model=config.model, token=env_config.token)
             self.client = InferenceClient(model=config.model, token=env_config.token)
 

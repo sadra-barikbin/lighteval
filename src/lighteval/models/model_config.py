@@ -205,6 +205,7 @@ class TGIModelConfig:
 @dataclass
 class InferenceModelConfig:
     model: str
+    model_dtype: str
     add_special_tokens: bool = True
 
 
@@ -301,7 +302,11 @@ def create_model_config(args: Namespace, accelerator: Union["Accelerator", None]
                 instance_type=config["instance"]["instance_type"],
                 namespace=config["instance"]["namespace"],
             )
-        return InferenceModelConfig(model=config["base_params"]["endpoint_name"])
+        
+        return InferenceModelConfig(
+            model=config["base_params"]["endpoint_name"],
+            model_dtype=config["base_params"]["dtype"],
+        )
 
     if config["type"] == "base":
         # Tests on the multichoice space parameters

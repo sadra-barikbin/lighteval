@@ -157,7 +157,7 @@ class EvaluationTracker:
 
         with open(output_results_file, "w") as f:
             f.write(dumped)
-
+        # Why do we save it twice? It makes leaderboard read it twice too.
         with open(output_results_in_details_file, "w") as f:
             f.write(dumped)
 
