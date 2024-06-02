@@ -80,7 +80,7 @@ class EvaluationTracker:
     task_config_logger: TaskConfigLogger
     hub_results_org: str
 
-    def __init__(self, hub_results_org: str = "", token: str = "") -> None:
+    def __init__(self, hub_results_org: str = "", hub_results_repo: str = "", token: str = "") -> None:
         """
         Creates all the necessary loggers for evaluation tracking.
 
@@ -97,8 +97,7 @@ class EvaluationTracker:
         self.general_config_logger = GeneralConfigLogger()
         self.task_config_logger = TaskConfigLogger()
         self.hub_results_org = hub_results_org
-        self.hub_results_repo = f"{hub_results_org}/results"
-        self.hub_private_results_repo = f"{hub_results_org}/private-results"
+        self.hub_results_repo = f"{hub_results_org}/{hub_results_repo}"
         self.api = HfApi(token=token)
 
     def save(
@@ -184,7 +183,7 @@ class EvaluationTracker:
 
         if push_results_to_hub:
             self.api.upload_folder(
-                repo_id=self.hub_results_repo if public else self.hub_private_results_repo,
+                repo_id=self.hub_results_repo,
                 folder_path=output_dir_results,
                 path_in_repo=self.general_config_logger.model_name,
                 repo_type="dataset",
@@ -251,7 +250,7 @@ class EvaluationTracker:
         sanitized_model_name = model_name.replace("/", "__")
 
         # "Default" detail names are the public detail names (same as results vs private-results)
-        repo_id = f"{self.hub_results_org}/details_{sanitized_model_name}"
+        repo_id = f"{self.hub_results_org}/{self.hub_results_repo}_details_{sanitized_model_name}"
         if not push_as_public:  # if not public, we add `_private`
             repo_id = f"{repo_id}_private"
 
