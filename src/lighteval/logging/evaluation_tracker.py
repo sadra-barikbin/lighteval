@@ -97,7 +97,7 @@ class EvaluationTracker:
         self.general_config_logger = GeneralConfigLogger()
         self.task_config_logger = TaskConfigLogger()
         self.hub_results_org = hub_results_org
-        self.hub_results_repo = f"{hub_results_org}/{hub_results_repo}"
+        self.hub_results_repo = hub_results_repo
         self.api = HfApi(token=token)
 
     def save(
@@ -183,7 +183,7 @@ class EvaluationTracker:
 
         if push_results_to_hub:
             self.api.upload_folder(
-                repo_id=self.hub_results_repo,
+                repo_id=f"{self.hub_results_org}/{self.hub_results_repo}",
                 folder_path=output_dir_results,
                 path_in_repo=self.general_config_logger.model_name,
                 repo_type="dataset",
