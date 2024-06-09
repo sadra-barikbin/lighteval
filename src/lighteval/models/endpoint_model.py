@@ -254,7 +254,7 @@ class InferenceEndpointModel(LightevalModel):
 
         for _, _ in tqdm(
             dataset.splits_start_end_iterator(),
-            total=self.DATASET_SPLITS,
+            total=dataset.dataset_splits,
             desc="Splits",
             position=0,
             disable=self.disable_tqdm,
@@ -294,6 +294,7 @@ class InferenceEndpointModel(LightevalModel):
         for request in requests:
             request.tokenized_context = self.tok_encode(request.context)
             request.tokenized_continuation = self.tok_encode(request.choice)
+        print(len(requests))
         dataset = LoglikelihoodDataset(requests=requests, dataset_splits=self.DATASET_SPLITS)
         batch_size = override_bs if override_bs is not None else BATCH_SIZE
         results: List[str] = []
@@ -302,7 +303,7 @@ class InferenceEndpointModel(LightevalModel):
         # as the desired value.
         for _, _ in tqdm(
             dataset.splits_start_end_iterator(),
-            total=self.DATASET_SPLITS,
+            total=dataset.dataset_splits,
             desc="Splits",
             position=0,
             disable=self.disable_tqdm,
@@ -348,7 +349,7 @@ class InferenceEndpointModel(LightevalModel):
 
         for _, _ in tqdm(
             dataset.splits_start_end_iterator(),
-            total=self.DATASET_SPLITS,
+            total=dataset.dataset_splits,
             desc="Splits",
             position=0,
             disable=self.disable_tqdm,
