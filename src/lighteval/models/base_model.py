@@ -616,6 +616,7 @@ class BaseModel(LightevalModel):
             eos_token_id=self.tokenizer.eos_token_id,
             do_sample=num_samples > 1,
             num_return_sequences=num_samples,
+            # generation_kwargs
         )
         if returns_logits:
             logits = self.model.compute_transition_scores(outputs.sequences, outputs.scores, normalize_logits=True)

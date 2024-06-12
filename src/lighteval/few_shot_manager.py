@@ -222,12 +222,12 @@ class FewShotSampler:
     def create_multi_turn_contexts(
         self, doc: Doc, use_chat_template: bool, system_prompt: Optional[str], tokenizer: PreTrainedTokenizer
     ) -> list[str]:
-        """Creates N contexts (depending on the number of turn) for a tasks.
-        Multi turn tasks need use chat templating.
+        """Creates N contexts (depending on the number of turns) for a task.
+        Multi turn tasks need to use chat templating.
 
         Args:
-            doc (Doc): Formated document.
-            use_chat_template (bool): wether or not to use chat template. Will fail if false.
+            doc (Doc): Formatted document.
+            use_chat_template (bool): whether or not to use chat template. Will fail if false.
             system_prompt (Optional[str]): The system prompt to use
             tokenizer (PreTrainedTokenizer): The tokenizer used for the chat template
 
@@ -246,6 +246,7 @@ class FewShotSampler:
 
         for i in doc.specific["multi_turn_queries"]:
             role_content_list.append({"role": "user", "content": i})
+            # bug here.
             role_content_list.append({"role": "assistant", "content": "{model_response}"})
         role_content_list.pop(-1)
 
