@@ -30,9 +30,10 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from lighteval.utils import NO_TGI_ERROR_MSG, as_list, is_tgi_available
+from lighteval.models.model_output import LoglikelihoodReturn, GenerateReturn
 from lighteval.tasks.requests import (
     GreedyUntilRequest,
-    LoglikelihoodRequest,
+    LoglikelihoodRequest
 )
 
 
@@ -82,8 +83,8 @@ class ModelClient:
 
         return generated_text
 
-    def greedy_until(self, requests: List[GreedyUntilRequest], override_bs=None) -> List[str]:
-        generated_texts: List[str] = []
+    def greedy_until(self, requests: List[GreedyUntilRequest], override_bs=None) -> List[GenerateReturn]:
+        generated_texts: List[GenerateReturn] = []
 
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
 
@@ -91,7 +92,7 @@ class ModelClient:
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=2
         ):
             results = [self.__process_request_generate(req) for req in batch]
-            generated_texts.extend([result.generated_text for result in results])
+            generated_texts.extend([GenerateReturn(result=result.generated_text) for result in results])
         return generated_texts
 
     def __process_request_logprob(self, request: Tuple[str, str]) -> Coroutine[None, List, str]:
@@ -99,8 +100,8 @@ class ModelClient:
         out = self.client.generate(context + choice, max_new_tokens=1, decoder_input_details=True)
         return out
 
-    def loglikelihood(self, requests: List[LoglikelihoodRequest], override_bs=None) -> List[Tuple[float, bool]]:
-        res: List[Tuple[float, bool]] = []
+    def loglikelihood(self, requests: List[LoglikelihoodRequest], override_bs=None) -> List[LoglikelihoodReturn]:
+        res: List[LoglikelihoodReturn] = []
 
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
 
@@ -123,7 +124,7 @@ class ModelClient:
                 logprobs = [token.logprob for token in detail[i:]]
 
                 logit_sum: float = np.sum(logprobs)
-                res.append((logit_sum, False))
+                res.append(LoglikelihoodReturn(result=(logit_sum, False)))
 
         return res
     
