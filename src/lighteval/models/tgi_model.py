@@ -30,10 +30,14 @@ from tqdm import tqdm
 from transformers import AutoTokenizer
 
 from lighteval.utils import NO_TGI_ERROR_MSG, as_list, is_tgi_available
+from lighteval.tasks.requests import (
+    GreedyUntilRequest,
+    LoglikelihoodRequest,
+)
 
 
 if is_tgi_available():
-    from text_generation import AsyncClient
+    from text_generation import Client
 
 
 BATCH_SIZE = 50
@@ -46,7 +50,6 @@ def divide_chunks(array, n):
 
 
 class ModelClient:
-    _DEFAULT_MAX_LENGTH: int = 4096
 
     def __init__(
         self,
@@ -57,56 +60,37 @@ class ModelClient:
             raise ImportError(NO_TGI_ERROR_MSG)
         headers = {} if auth_token is None else {"Authorization": f"Basic {auth_token}"}
 
-        self.client = AsyncClient(address, headers=headers, timeout=240)
-        self._max_gen_toks = 256
+        self.client = Client(address, headers=headers, timeout=240)
         self.model_info = requests.get(f"{address}/info").json()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
 
-    def __process_request_generate(self, request: Tuple[str, Union[Tuple, List]]) -> Coroutine[None, List, str]:
-        context, stopping_arugments = request
-
-        if isinstance(stopping_arugments, tuple):
-            stop_sequence_arg, max_gen_tokens_arg = stopping_arugments
-            stop_sequences = as_list(stop_sequence_arg)
-            # Todo @clefourrier add proper messaging explaining this
-            # we don't want people to be surprised because they set a max len in the model overwritten by the eval
-            max_tokens = max_gen_tokens_arg
-        else:
-            stop_sequences = as_list(stopping_arugments)
-            max_tokens = self._max_gen_toks
-
-        if stop_sequences is None or stop_sequences == [None]:
-            stop_sequences = []
+    def __process_request_generate(self, request: GreedyUntilRequest) -> Coroutine[None, List, str]:
+        request.stop_sequence = (
+            (as_list(request.stop_sequence)
+            if request.stop_sequence is not None
+            else []) + [self.tokenizer.eos_token]
+        )
 
         generated_text = self.client.generate(
-            context,
-            max_new_tokens=max_tokens,
+            request.context,
+            max_new_tokens=request.generation_size,
             decoder_input_details=True,
-            stop_sequences=stop_sequences,
+            stop_sequences=request.stop_sequence,
             seed=42,
-            truncate=ModelClient._DEFAULT_MAX_LENGTH,
+            truncate=self.max_length,
         )
 
         return generated_text
 
-    async def __process_batch_generate(self, requests: List[Tuple[str, Union[Tuple, List]]]):
-        return await asyncio.gather(*[self.__process_request_generate(request) for request in requests])
-
-    def greedy_until(self, requests: List[Tuple[str, Union[Tuple, List]]], override_bs=None) -> List[str]:
+    def greedy_until(self, requests: List[GreedyUntilRequest], override_bs=None) -> List[str]:
         generated_texts: List[str] = []
 
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
-        # I should see if there's sth similar to this in asyncio.
-        try:
-            loop = asyncio.get_running_loop()
-            run = loop.run_until_complete
-        except RuntimeError:
-            run = asyncio.run
 
         for batch in tqdm(
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=2
         ):
-            results = run(self.__process_batch_generate(batch))
+            results = [self.__process_request_generate(req) for req in batch]
             generated_texts.extend([result.generated_text for result in results])
         return generated_texts
 
@@ -115,29 +99,22 @@ class ModelClient:
         out = self.client.generate(context + choice, max_new_tokens=1, decoder_input_details=True)
         return out
 
-    async def __process_batch_logprob(self, requests: List[Tuple[str, str]]):
-        return await asyncio.gather(*[self.__process_request_logprob(request) for request in requests])
-
-    def loglikelihood(self, requests: List[Tuple[str, str]], override_bs=None) -> List[Tuple[float, bool]]:
+    def loglikelihood(self, requests: List[LoglikelihoodRequest], override_bs=None) -> List[Tuple[float, bool]]:
         res: List[Tuple[float, bool]] = []
 
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
 
-        try:
-            loop = asyncio.get_running_loop()
-            run = loop.run_until_complete
-        except RuntimeError:
-            run = asyncio.run
-
         for batch in tqdm(
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=1
         ):
-            results = run(self.__process_batch_logprob(batch))
+            batch = [(req.context, req.choice) for req in batch]
+            # results = run(self.__process_batch_logprob(batch))
+            results = [self.__process_request_logprob(req) for req in batch]
             details = [result.details.prefill for result in results]
 
-            for detail, (context, choice) in zip(details, batch):
-                tokenized_context = self.tokenizer.tokenize(context, add_special_tokens=True)
-                tokenized_input = self.tokenizer.tokenize(context + choice, add_special_tokens=True)
+            for detail, req in zip(details, batch):
+                tokenized_context = self.tokenizer.tokenize(req.context, add_special_tokens=True)
+                tokenized_input = self.tokenizer.tokenize(req.context + req.choice, add_special_tokens=True)
 
                 i = 0
                 while i < len(tokenized_context) and tokenized_input[i] == tokenized_context[i]:
