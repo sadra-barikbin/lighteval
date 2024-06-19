@@ -96,13 +96,18 @@ class ModelClient:
         generated_texts: List[str] = []
 
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
+        # I should see if there's sth similar to this in asyncio.
+        try:
+            loop = asyncio.get_running_loop()
+            run = loop.run_until_complete
+        except RuntimeError:
+            run = asyncio.run
 
         for batch in tqdm(
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=2
         ):
-            results = asyncio.run(self.__process_batch_generate(batch))
+            results = run(self.__process_batch_generate(batch))
             generated_texts.extend([result.generated_text for result in results])
-
         return generated_texts
 
     def __process_request_logprob(self, request: Tuple[str, str]) -> Coroutine[None, List, str]:
@@ -118,10 +123,16 @@ class ModelClient:
 
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
 
+        try:
+            loop = asyncio.get_running_loop()
+            run = loop.run_until_complete
+        except RuntimeError:
+            run = asyncio.run
+
         for batch in tqdm(
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=1
         ):
-            results = asyncio.run(self.__process_batch_logprob(batch))
+            results = run(self.__process_batch_logprob(batch))
             details = [result.details.prefill for result in results]
 
             for detail, (context, choice) in zip(details, batch):
