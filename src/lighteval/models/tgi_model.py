@@ -138,6 +138,10 @@ class ModelClient:
                 res.append((logit_sum, False))
 
         return res
-
+    
+    @property
+    def max_length(self) -> int:
+        return self.model_info["max_input_length"]
+    
     def set_cache_hook(self, cache_hook):
         self.cache_hook = cache_hook
