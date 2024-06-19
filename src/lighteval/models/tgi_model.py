@@ -112,9 +112,9 @@ class ModelClient:
             results = [self.__process_request_logprob(req) for req in batch]
             details = [result.details.prefill for result in results]
 
-            for detail, req in zip(details, batch):
-                tokenized_context = self.tokenizer.tokenize(req.context, add_special_tokens=True)
-                tokenized_input = self.tokenizer.tokenize(req.context + req.choice, add_special_tokens=True)
+            for detail, (context, choice) in zip(details, batch):
+                tokenized_context = self.tokenizer.tokenize(context, add_special_tokens=True)
+                tokenized_input = self.tokenizer.tokenize(context + choice, add_special_tokens=True)
 
                 i = 0
                 while i < len(tokenized_context) and tokenized_input[i] == tokenized_context[i]:
