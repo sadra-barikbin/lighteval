@@ -39,6 +39,7 @@ from lighteval.tasks.requests import (
 
 if is_tgi_available():
     from text_generation import Client
+    from text_generation.types import Response
 
 
 BATCH_SIZE = 50
@@ -65,7 +66,7 @@ class ModelClient:
         self.model_info = requests.get(f"{address}/info").json()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
 
-    def __process_request_generate(self, request: GreedyUntilRequest) -> Coroutine[None, List, str]:
+    def __process_request_generate(self, request: GreedyUntilRequest) -> Response:
         request.stop_sequence = (
             (as_list(request.stop_sequence)
             if request.stop_sequence is not None
@@ -92,13 +93,19 @@ class ModelClient:
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=2
         ):
             results = [self.__process_request_generate(req) for req in batch]
-            generated_texts.extend([GenerateReturn(result=result.generated_text) for result in results])
+            for i in range(len(results)):
+                generated_texts.append(
+                    GenerateReturn(result=results[i].generated_text,
+                        padded_tokens_count=0,
+                        generated_tokens=[token.id for token in results[i].details.tokens],
+                        truncated_tokens_count=max(len(self.tokenizer.encode(batch[i].context))-self.max_length, 0)
+                    )
+                )
         return generated_texts
 
-    def __process_request_logprob(self, request: Tuple[str, str]) -> Coroutine[None, List, str]:
+    def __process_request_logprob(self, request: Tuple[str, str]) -> Response:
         context, choice = request
-        out = self.client.generate(context + choice, max_new_tokens=1, decoder_input_details=True)
-        return out
+        return self.client.generate(context + choice, max_new_tokens=1, decoder_input_details=True)
 
     def loglikelihood(self, requests: List[LoglikelihoodRequest], override_bs=None) -> List[LoglikelihoodReturn]:
         res: List[LoglikelihoodReturn] = []
@@ -124,8 +131,13 @@ class ModelClient:
                 logprobs = [token.logprob for token in detail[i:]]
 
                 logit_sum: float = np.sum(logprobs)
-                res.append(LoglikelihoodReturn(result=(logit_sum, False)))
-
+                res.append(
+                    LoglikelihoodReturn(
+                        result=(logit_sum, False),
+                        padded_tokens_count=0,
+                        truncated_tokens_count=max(len(tokenized_input)-self.max_length,0)
+                    )
+                )
         return res
     
     @property
@@ -134,3 +146,6 @@ class ModelClient:
     
     def set_cache_hook(self, cache_hook):
         self.cache_hook = cache_hook
+    
+    def cleanup(self):
+        return
