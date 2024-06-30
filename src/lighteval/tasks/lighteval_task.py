@@ -631,6 +631,14 @@ class LightevalTask:
 
         for task, dataset in zip(tasks, datasets):
             task.dataset = dataset
+    
+    # @staticmethod
+    # def from_config(
+    #     config: LightevalTaskConfig,
+    #     cache_dir: Optional[str]=None,
+    #     custom_tasks_module: Optional[List[str]]=None
+    # ):
+    #     return LightevalTask(config.name, config, cache_dir, custom_tasks_module)
 
 
 def download_dataset_worker(args):
