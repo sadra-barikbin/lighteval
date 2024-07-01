@@ -110,7 +110,9 @@ class Registry:
         )
 
     def get_task_dict(
-        self, task_name_list: List[str], custom_tasks: Optional[Union[str, ModuleType]] = None
+        self,
+        task_name_list: List[str],
+        custom_tasks: Optional[List[Union[str, ModuleType]]] = None,
     ) -> Dict[str, LightevalTask]:
         """
         Get a dictionary of tasks based on the task name list.
@@ -132,7 +134,7 @@ class Registry:
         custom_tasks_module = []
         TASKS_TABLE = []
         if custom_tasks is not None:
-            custom_tasks_module.append(create_custom_tasks_module(custom_tasks=custom_tasks))
+            custom_tasks_module.extend([create_custom_tasks_module(custom_tasks=ct) for ct in custom_tasks])
         if can_load_extended_tasks():
             for extended_task_module in AVAILABLE_EXTENDED_TASKS_MODULES:
                 custom_tasks_module.append(extended_task_module)
@@ -140,7 +142,7 @@ class Registry:
             hlog_warn(CANNOT_USE_EXTENDED_TASKS_MSG)
 
         for module in custom_tasks_module:
-            TASKS_TABLE.extend(module.TASKS_TABLE)
+            TASKS_TABLE.extend(getattr(module, "TASKS_TABLE", []))
 
         if len(TASKS_TABLE) > 0:
             custom_tasks_registry = create_config_tasks(meta_table=TASKS_TABLE, cache_dir=self.cache_dir)
