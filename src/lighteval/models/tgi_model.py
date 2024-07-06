@@ -38,7 +38,7 @@ from lighteval.tasks.requests import (
 
 
 if is_tgi_available():
-    from text_generation import Client
+    from text_generation import AsyncClient
     from text_generation.types import Response
 
 
@@ -62,7 +62,7 @@ class ModelClient:
             raise ImportError(NO_TGI_ERROR_MSG)
         headers = {} if auth_token is None else {"Authorization": f"Basic {auth_token}"}
 
-        self.client = Client(address, headers=headers, timeout=240)
+        self.client = AsyncClient(address, headers=headers, timeout=240)
         self.model_info = requests.get(f"{address}/info").json()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
 
@@ -84,6 +84,9 @@ class ModelClient:
 
         return generated_text
 
+    async def __process_batch_generate(self, requests: List[GreedyUntilRequest]):
+        return await asyncio.gather(*[self.__process_request_generate(request) for request in requests])
+
     def greedy_until(self, requests: List[GreedyUntilRequest], override_bs=None) -> List[GenerateReturn]:
         generated_texts: List[GenerateReturn] = []
 
@@ -92,7 +95,7 @@ class ModelClient:
         for batch in tqdm(
             divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=2
         ):
-            results = [self.__process_request_generate(req) for req in batch]
+            results = asyncio.run(self.__process_batch_generate(batch))
             for i in range(len(results)):
                 generated_texts.append(
                     GenerateReturn(result=results[i].generated_text,
@@ -102,6 +105,9 @@ class ModelClient:
                     )
                 )
         return generated_texts
+    
+    async def __process_batch_logprob(self, requests: List[Tuple[str, str]]):
+        return await asyncio.gather(*[self.__process_request_logprob(request) for request in requests])
 
     def __process_request_logprob(self, request: Tuple[str, str]) -> Response:
         context, choice = request
@@ -117,7 +123,7 @@ class ModelClient:
         ):
             batch = [(req.context, req.choice) for req in batch]
             # results = run(self.__process_batch_logprob(batch))
-            results = [self.__process_request_logprob(req) for req in batch]
+            results = asyncio.run(self.__process_batch_logprob(batch))
             details = [result.details.prefill for result in results]
 
             for detail, (context, choice) in zip(details, batch):
