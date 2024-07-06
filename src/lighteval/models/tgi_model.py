@@ -72,7 +72,9 @@ class ModelClient:
             if request.stop_sequence is not None
             else []) + [self.tokenizer.eos_token]
         )
-
+        print(request.context)
+        print(request.generation_size)
+        print(request.stop_sequence)
         generated_text = self.client.generate(
             request.context,
             max_new_tokens=request.generation_size,
