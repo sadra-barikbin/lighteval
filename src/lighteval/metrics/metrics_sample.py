@@ -29,6 +29,7 @@ from typing import Union
 
 import nltk
 import numpy as np
+import pydantic
 from nltk.metrics.distance import edit_distance
 from nltk.tokenize import word_tokenize
 from nltk.tokenize.treebank import TreebankWordTokenizer
@@ -85,7 +86,7 @@ class ExactMatches:
             )
         self.type_exact_match = type_exact_match
 
-    def compute(self, golds: list[str], predictions: list[str], **kwargs) -> float:
+    def compute(self, golds: list[str], predictions: list[str], formatted_doc: Doc = None) -> float:
         """Computes the metric over a list of golds and predictions for one single sample.
 
         Args:
@@ -97,6 +98,18 @@ class ExactMatches:
         """
         results = []
         # We might need to flatten golds if they are a list of lists
+
+        if formatted_doc and formatted_doc.specific and "output_object_model" in formatted_doc.specific:
+            output_model: pydantic.BaseModel = formatted_doc.specific["output_object_model"]
+            predictions_as_objects = []
+            for pred in predictions:
+                try:
+                    predictions_as_objects.append(output_model.model_validate_json(pred))
+                except pydantic.ValidationError:
+                    predictions_as_objects.append(output_model.model_construct())
+            predictions = predictions_as_objects
+            golds = [output_model.model_validate_json(gold) for gold in golds]
+
         for gold in golds:
             for pred in predictions:
                 results.append(self.compute_one_item(gold=gold, pred=pred))
@@ -104,18 +117,24 @@ class ExactMatches:
 
     def compute_one_item(
         self,
-        gold: str,
-        pred: str,
+        gold: Union[str, pydantic.BaseModel],
+        pred: Union[str, pydantic.BaseModel],
     ) -> float:
         """Compares two strings only.
 
         Args:
-            gold (str): One of the possible references
-            pred (str): One of the possible predictions
+            gold (str|pydantic.BaseModel): One of the possible references
+            pred (str|pydantic.BaseModel): One of the possible predictions
 
         Returns:
             float: The exact match score. Will be 1 for a match, 0 otherwise.
         """
+        if isinstance(gold, pydantic.BaseModel):
+            try:
+                return float(pred == gold)
+            except pydantic.ValidationError:
+                return 0
+
         if not pred:
             return 0
 
