@@ -97,7 +97,7 @@ class ModelClient:
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
 
         for batch in tqdm(
-            divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=2
+            divide_chunks(requests, batch_size), total=math.ceil(len(requests) / batch_size), maxinterval=2
         ):
             results = asyncio.run(self.__process_batch_generate(batch))
             for i in range(len(results)):
@@ -123,7 +123,7 @@ class ModelClient:
         batch_size = override_bs if override_bs > 0 else BATCH_SIZE
 
         for batch in tqdm(
-            divide_chunks(requests, batch_size), total=math.ceil(len(requests) // batch_size), maxinterval=1
+            divide_chunks(requests, batch_size), total=math.ceil(len(requests) / batch_size), maxinterval=1
         ):
             batch = [(req.context, req.choice) for req in batch]
             # results = run(self.__process_batch_logprob(batch))
