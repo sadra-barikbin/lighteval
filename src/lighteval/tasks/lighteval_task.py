@@ -41,7 +41,7 @@ from lighteval.metrics import (
     apply_target_perplexity_metric,
 )
 from lighteval.metrics.metrics import MetricCategory, Metrics
-from lighteval.models.base_model import BaseModel
+from lighteval.models.base_model import LightevalModel
 from lighteval.models.model_output import ModelReturn
 from lighteval.tasks.requests import (
     Doc,
@@ -310,6 +310,7 @@ class LightevalTask:
         stored_splits = []
 
         # We look at these keys in order (first the training sets, then the validation sets)
+        # Bug below
         allowed_splits = ["train", "dev", "valid", "default"]
         for allowed_split in allowed_splits:
             # We do a partial match of the allowed splits
@@ -669,7 +670,7 @@ def create_requests_from_tasks(  # noqa: C901
     task_dict: dict[str, LightevalTask],
     fewshot_dict: dict[str, list[Tuple[int, bool]]],
     num_fewshot_seeds: int,
-    lm: BaseModel,
+    lm: LightevalModel,
     max_samples: int,
     evaluation_tracker: "EvaluationTracker",
     use_chat_template: bool,
