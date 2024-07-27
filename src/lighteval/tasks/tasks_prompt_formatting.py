@@ -1849,13 +1849,11 @@ def pubmed_qa_helm(line, task_name: str = None):
     )
     query += f"\n\nQuestion: {line['question']}\nAnswer: "
     gold_ix = ["yes", "no", "maybe"].index(line["final_decision"])
-    # And this
     return Doc(
         task_name=task_name,
         query=query,
         choices=["A", "B", "C"],
         gold_index=gold_ix,
-        target_for_fewshot_sorting=["yes", "no", "maybe"][gold_ix],
     )
 
 
@@ -2235,13 +2233,11 @@ def truthful_qa_helm(line, task_name: str = None):
     query = f"Question: {line['question']}\n"
     query += "".join([f"{key}. {choice}\n" for key, choice in zip(LETTER_INDICES, line["choices"])])
     query += "Answer:"
-    # And this.
     return Doc(
         task_name=task_name,
         query=query,
         choices=LETTER_INDICES[: len(line["choices"])],
         gold_index=line["gold_index"],
-        target_for_fewshot_sorting=line["choices"][line["gold_index"]],
     )
 
 

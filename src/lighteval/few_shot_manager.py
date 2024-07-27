@@ -191,7 +191,7 @@ class FewShotSampler:
             examples.append({"role": "system", "content": system_prompt})
         for ex in fewshot_ex:
             examples.append({"role": "user", "content": task.doc_to_text_without_instructions(ex)})
-            examples.append({"role": "assistant", "content": task.doc_to_target(ex, few_shot=True)})
+            examples.append({"role": "assistant", "content": task.doc_to_target(ex)})
         # We add the actual example
         examples.append({"role": "user", "content": example})
         # We add the initial instruction if present, after the system prompt of before the task
@@ -213,7 +213,7 @@ class FewShotSampler:
             return instruction + example
 
         labeled_examples = (
-            "\n\n".join([task.doc_to_text_without_instructions(ex) + task.doc_to_target(ex, few_shot=True) for ex in fewshot_ex])
+            "\n\n".join([task.doc_to_text_without_instructions(ex) + task.doc_to_target(ex) for ex in fewshot_ex])
             + "\n\n"
         )
         return instruction + labeled_examples + example
