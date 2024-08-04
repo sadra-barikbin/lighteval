@@ -72,7 +72,7 @@ class ModelClient:
             if request.stop_sequence is not None
             else []) + ([self.tokenizer.eos_token] if self.tokenizer.eos_token else [])
         )
-        request.generation_size = request.generation_size or max(self.max_length - len(self.tokenizer.tokenize(request.context)), 1)
+        request.generation_size = request.generation_size or max(self.max_length - len(self.tokenizer.tokenize(request.context,  add_special_tokens=True)), 1)
         # print(request.context)
         # print(request.generation_size)
         # print(request.stop_sequence)
@@ -145,7 +145,8 @@ class ModelClient:
                     LoglikelihoodReturn(
                         result=(logit_sum, False),
                         padded_tokens_count=0,
-                        truncated_tokens_count=max(len(tokenized_input)-self.max_length,0)
+                        truncated_tokens_count=max(len(tokenized_input)-self.max_length,0),
+                        input_tokens=self.tokenizer.convert_tokens_to_ids(tokenized_input),
                     )
                 )
         return res
