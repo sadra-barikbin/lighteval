@@ -174,6 +174,10 @@ def is_tgi_available() -> bool:
     return importlib.util.find_spec("text_generation") is not None
 
 
+def is_anthropic_available() -> bool:
+    return importlib.util.find_spec("anthropic") is not None
+
+
 NO_TGI_ERROR_MSG = "You are trying to start a text generation inference endpoint, but text-generation is not present in your local environement. Please install it using pip."
 
 

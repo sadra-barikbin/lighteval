@@ -1,2 +1,5 @@
-from lighteval.models.endpoints.endpoint_model import InferenceEndpointModel
+from lighteval.models.endpoints.tgi_model import ModelClient as TGIModel
+from lighteval.models.endpoints.endpoint_model import EndpointModel
+from lighteval.models.endpoints.inference_endpoint_model import InferenceEndpointModel
 from lighteval.models.endpoints.anthropic_model import AnthropicModel
+from lighteval.models.endpoints.openai_model import OpenAIModel

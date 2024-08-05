@@ -452,6 +452,7 @@ class NanotronLightevalModel(LightevalModel):
             requests, desc="Tokenizing", disable=bool(dist.get_rank(self.parallel_context.world_pg) != 0)
         ):
             if request.context == "":
+                # This shouldn't be BOS ?
                 request.tokenized_context = [self.tokenizer.eos_token_id]
                 request.tokenized_continuation = self.tok_encode(request.choice)
             else:

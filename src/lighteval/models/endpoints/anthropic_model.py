@@ -1,35 +1,84 @@
-from typing import Coroutine
+from functools import singledispatchmethod
+from typing import cast, Coroutine, Optional
+from transformers import PreTrainedTokenizerFast
 
-from lighteval.models.endpoints import InferenceEndpointModel
-from lighteval.models.model_output import GenerateReturn
-from lighteval.tasks.requests import GreedyUntilRequest
+from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointResponse
+from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn
+from lighteval.tasks.requests import GreedyUntilRequest, LoglikelihoodRequest, LoglikelihoodRollingRequest
+from lighteval.utils import is_anthropic_available
 
-class AnthropicModel(InferenceEndpointModel):
-    def __init__(self):
+if is_anthropic_available():
+    from anthropic.types import ModelParam, Completion
+    from anthropic import NOT_GIVEN
+
+class AnthropicModel(EndpointModel):
+
+    _DEFAULT_MAX_LENGTH = 2048
+
+    def __init__(self, model_id: "ModelParam"):
         import anthropic
-        self.client: anthropic.Anthropic = anthropic.Anthropic()
+        self.async_client: anthropic.AsyncAnthropic = anthropic.AsyncAnthropic()
+        self.client : anthropic.Anthropic = anthropic.Anthropic()
+        self._tokenizer = PreTrainedTokenizerFast(tokenizer_object=self.client.get_tokenizer())
+        self._tokenizer.eos_token = "<EOT>"
+        self.model_id = model_id
+        
 
-    def _async_process_request(
+    async def _async_process_request(
         self, context: str, stop_tokens: list[str], max_tokens: int
-    ) -> Coroutine[None, list[TextGenerationOutput], str]:
-        self.client
-        return generated_text
-
-    def _process_request(self, context: str, stop_tokens: list[str], max_tokens: int) -> TextGenerationOutput:
-        # Todo: add an option to launch with conversational instead for chat prompts
-        # https://huggingface.co/docs/huggingface_hub/v0.20.3/en/package_reference/inference_client#huggingface_hub.AsyncInferenceClient.conversational
-        generated_text = self.client.text_generation(
+    ) -> Coroutine[None, None, Completion]:
+        
+        return await self.async_client.completions.create(
             prompt=context,
-            details=True,
-            decoder_input_details=True,
-            max_new_tokens=max_tokens,
-            stop_sequences=stop_tokens,
-            # truncate=,
+            stop_sequences=stop_tokens or NOT_GIVEN,
+            max_tokens_to_sample=max_tokens,
+            model=self.model_id,
+            temperature=0.
         )
-
-        return generated_text
     
-    def greedy_until(self, requests: list[GreedyUntilRequest], override_bs: int | None = None) -> list[GenerateReturn]:
-        return super().greedy_until(requests, override_bs)
-        
-        
+    def _process_request(self, context: str, stop_tokens: list[str], max_tokens: int) -> Completion:
+        return self.client.completions.create(
+            prompt=context,
+            stop_sequences=stop_tokens or NOT_GIVEN,
+            max_tokens_to_sample=max_tokens,
+            model=self.model_id,
+            temperature=0.
+        )
+    
+    @singledispatchmethod
+    def _process_endpoint_response(self, request, response):
+        ...
+    
+    @_process_endpoint_response.register
+    def _(self, request: GreedyUntilRequest, response: EndpointResponse) -> GenerateReturn:
+        response = cast(Completion, response)
+
+        return GenerateReturn(
+            result=response.completion,
+            truncated_tokens_count=-1,
+            padded_tokens_count=-1,
+        )
+    
+    def loglikelihood(
+        self, requests: list[LoglikelihoodRequest], override_bs: Optional[int] = None
+    ) -> list[LoglikelihoodReturn]:
+        raise ValueError("Anthropic models work only with generative metrics as the api does not provide the logits.")
+    
+    def loglikelihood_rolling(
+        self, requests: list[LoglikelihoodRollingRequest], override_bs: Optional[int] = None
+    ) -> list[LoglikelihoodReturn]:
+        raise ValueError("Anthropic models work only with generative metrics as the api does not provide the logits.")
+
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+
+    @property
+    def add_special_tokens(self):
+        return True
+
+    @property
+    def max_length(self) -> int:
+        if hasattr(self.tokenizer, "model_max_length"):
+            return self.tokenizer.model_max_length
+        return AnthropicModel._DEFAULT_MAX_LENGTH

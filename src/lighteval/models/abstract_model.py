@@ -39,6 +39,7 @@ from lighteval.tasks.requests import (
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
     LoglikelihoodSingleTokenRequest,
+    ChatRequest
 )
 
 
@@ -131,6 +132,9 @@ class LightevalModel(ABC):
         tokenized sequences.
         """
         return NotImplemented
+    
+    @abstractmethod
+    def chat(self, requests: list[ChatRequest])
 
     # Tokenization utils
     def tok_encode(self, str_to_encode: str | list[str], add_special_tokens: Optional[bool] = None) -> TokenSequence:
@@ -145,7 +149,7 @@ class LightevalModel(ABC):
             return_tensors="pt",
         )
 
-    def tok_encode_pair(self, context, continuation):
+    def tok_encode_pair(self, context, continuation) -> tuple[TokenSequence]:
         """Encodes a context, continuation pair by taking care of the spaces in between."""
         n_spaces = len(context) - len(context.rstrip())
         if n_spaces > 0:
@@ -154,6 +158,7 @@ class LightevalModel(ABC):
         whole_enc = self.tok_encode(context + continuation)
         context_enc = self.tok_encode(context)
         context_enc_len = len(context_enc)
+        # This way context might steal some of the cont. from its beginning.
         continuation_enc = whole_enc[context_enc_len:]
         return context_enc, continuation_enc
 

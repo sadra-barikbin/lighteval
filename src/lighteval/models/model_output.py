@@ -57,9 +57,15 @@ class LoglikelihoodSingleTokenReturn(ModelReturn):
         return self.result
 
 
+from typing import TypeVar, Generic, Literal
+class Message:
+    role: Literal["user", "assistant", "system"]
+    content: str
+    name: str = None
+T = TypeVar("ReturnType", str, Message)
 @dataclass
-class GenerateReturn(ModelReturn):
-    result: str = field(default_factory=str)  # generated text continuation
+class GenerateReturn(ModelReturn, Generic[T]):
+    result: T = field(default_factory=T)  # generated text continuation
     logits: Optional[list[float]] = None  # Generated text logits
 
     def get_result_for_eval(self):

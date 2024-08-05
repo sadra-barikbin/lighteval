@@ -23,9 +23,10 @@
 import json
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
-from typing import NamedTuple, Optional, Union
+from typing import NamedTuple, Optional, Union, TypeVar, Generic
 
 from lighteval.utils import as_list
+from transformers import Conversation
 
 
 class RequestType(Enum):
@@ -36,8 +37,11 @@ class RequestType(Enum):
     GREEDY_UNTIL_MULTI_TURN = auto()
 
 
+ContextType = TypeVar("ContextType", str, Conversation)
+
+
 @dataclass
-class Request:
+class Request(Generic[ContextType]):
     """
     Represents a request for a specific task, example and request within that
     example in the evaluation process.
@@ -48,33 +52,33 @@ class Request:
         task_name (str): The name of the task.
         example_index (int): The index of the example.
         request_index (int): The index of the request.
-        context (str): The context for the request.
+        context (ContextType): The context for the request.
     """
 
     task_name: str
     example_index: int
     request_index: int
-    context: str
+    context: ContextType
 
 
 @dataclass
-class LoglikelihoodRequest(Request):
+class LoglikelihoodRequest(Request[ContextType]):
     """
     Represents a request for log-likelihood evaluation.
 
     Attributes:
-        choice (str): The choice to evaluate the log-likelihood for.
+        choice (ContextType): The choice to evaluate the log-likelihood for.
         request_type (RequestType): The type of the request (LOGLIKELIHOOD).
     """
 
-    choice: str
+    choice: ContextType
     request_type = RequestType.LOGLIKELIHOOD
     tokenized_context: list[int] = None
     tokenized_continuation: list[int] = None
 
 
 @dataclass
-class LoglikelihoodSingleTokenRequest(Request):
+class LoglikelihoodSingleTokenRequest(Request[str]):
     """
     Represents a request for calculating the log-likelihood of a single token.
     Faster because we can get all the loglikelihoods in one pass.
@@ -91,7 +95,7 @@ class LoglikelihoodSingleTokenRequest(Request):
 
 
 @dataclass
-class LoglikelihoodRollingRequest(Request):
+class LoglikelihoodRollingRequest(Request[ContextType]):
     """
     Represents a request for log-likelihood rolling evaluation.
 
@@ -104,7 +108,7 @@ class LoglikelihoodRollingRequest(Request):
 
 
 @dataclass
-class GreedyUntilRequest(Request):
+class GreedyUntilRequest(Request[ContextType]):
     """
     Represents a request for generating text using the Greedy-Until algorithm.
 
@@ -123,7 +127,7 @@ class GreedyUntilRequest(Request):
 
 
 @dataclass
-class GreedyUntilMultiTurnRequest(Request):
+class GreedyUntilMultiTurnRequest(Request[ContextType]):
     """
     Represents a request for generating text using the Greedy-Until algorithm.
 
