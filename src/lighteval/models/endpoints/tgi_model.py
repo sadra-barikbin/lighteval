@@ -24,15 +24,14 @@ import asyncio
 from typing import Coroutine
 
 import requests
-from huggingface_hub import TextGenerationOutput
+from huggingface_hub import (
+    TextGenerationOutput,
+    InferenceClient,
+    AsyncInferenceClient
+)
 from transformers import AutoTokenizer
 
-from lighteval.models.endpoints.endpoint_model import InferenceEndpointModel
-from lighteval.utils import NO_TGI_ERROR_MSG, is_tgi_available
-
-
-if is_tgi_available():
-    from text_generation import AsyncClient
+from lighteval.models.endpoints.inference_endpoint_model import InferenceEndpointModel
 
 
 BATCH_SIZE = 50
@@ -50,36 +49,18 @@ class ModelClient(InferenceEndpointModel):
     _DEFAULT_MAX_LENGTH: int = 4096
 
     def __init__(self, address, auth_token=None, model_id=None) -> None:
-        if not is_tgi_available():
-            raise ImportError(NO_TGI_ERROR_MSG)
         headers = {} if auth_token is None else {"Authorization": f"Bearer {auth_token}"}
-
-        self.client = AsyncClient(address, headers=headers, timeout=240)
-        self._max_gen_toks = 256
         self.model_info = requests.get(f"{address}/info", headers=headers).json()
+        self._max_gen_toks = 256
         if "model_id" not in self.model_info:
             raise ValueError("Error occured when fetching info: " + str(self.model_info))
         if model_id:
             self.model_info["model_id"] = model_id
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
         self._add_special_tokens = True
-        self.use_async = True
 
-    def _async_process_request(
-        self, context: str, stop_tokens: list[str], max_tokens: int
-    ) -> Coroutine[None, list[TextGenerationOutput], str]:
-        # Todo: add an option to launch with conversational instead for chat prompts
-        generated_text = self.client.generate(
-            prompt=context,
-            decoder_input_details=True,
-            max_new_tokens=max_tokens,
-            stop_sequences=stop_tokens,
-        )
-
-        return generated_text
-
-    def _process_request(self, *args, **kwargs) -> TextGenerationOutput:
-        return asyncio.run(self._async_process_request(*args, **kwargs))
+        self.async_client = AsyncInferenceClient(model=address, token=auth_token)
+        self.client = InferenceClient(model=address, token=auth_token)
 
     def set_cache_hook(self, cache_hook):
         self.cache_hook = cache_hook
@@ -97,10 +78,6 @@ class ModelClient(InferenceEndpointModel):
         if hasattr(self.tokenizer, "model_max_length"):
             return self.tokenizer.model_max_length
         return ModelClient._DEFAULT_MAX_LENGTH
-
-    @property
-    def disable_tqdm(self) -> bool:
-        False
 
     def cleanup(self):
         pass

@@ -39,7 +39,7 @@ from lighteval.models.model_config import (
     InferenceModelConfig,
     TGIModelConfig,
 )
-from lighteval.models.tgi_model import ModelClient
+from lighteval.models.endpoints.tgi_model import ModelClient
 from lighteval.utils import NO_TGI_ERROR_MSG, is_accelerate_available, is_tgi_available
 
 
