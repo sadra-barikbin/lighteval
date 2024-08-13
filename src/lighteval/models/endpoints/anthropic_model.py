@@ -2,6 +2,7 @@ from functools import singledispatchmethod
 from typing import cast, Coroutine, Optional
 from transformers import PreTrainedTokenizerFast
 
+from lighteval.models.abstract_model import LightevalModel
 from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointResponse
 from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn
 from lighteval.tasks.requests import GreedyUntilRequest, LoglikelihoodRequest, LoglikelihoodRollingRequest
@@ -19,8 +20,10 @@ class AnthropicModel(EndpointModel):
         import anthropic
         self.async_client: anthropic.AsyncAnthropic = anthropic.AsyncAnthropic()
         self.client : anthropic.Anthropic = anthropic.Anthropic()
-        self._tokenizer = PreTrainedTokenizerFast(tokenizer_object=self.client.get_tokenizer())
-        self._tokenizer.eos_token = "<EOT>"
+        self.tokenizer = LightevalModel.Tokenizer.from_hf_tokenizer(
+            PreTrainedTokenizerFast(tokenizer_object=self.client.get_tokenizer())
+        )
+        self.tokenizer.eos_token = "<EOT>"
         self.model_id = model_id
         
 
@@ -68,10 +71,6 @@ class AnthropicModel(EndpointModel):
         self, requests: list[LoglikelihoodRollingRequest], override_bs: Optional[int] = None
     ) -> list[LoglikelihoodReturn]:
         raise ValueError("Anthropic models work only with generative metrics as the api does not provide the logits.")
-
-    @property
-    def tokenizer(self):
-        return self._tokenizer
 
     @property
     def add_special_tokens(self):

@@ -49,13 +49,7 @@ class DummyModel(LightevalModel):
         self.config = config
         self.env_config = env_config
         self._random = random.Random(self.config.seed)
-        self._tokenizer = None
-
-    @property
-    def tokenizer(self):
-        if not self._tokenizer:
-            self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        return self._tokenizer
+        self.tokenizer = LightevalModel.HFTokenizer.from_hf_tokenizer(AutoTokenizer.from_pretrained("gpt2"))
 
     @property
     def add_special_tokens(self):

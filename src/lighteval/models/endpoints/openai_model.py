@@ -1,38 +1,20 @@
 from functools import singledispatchmethod
 from typing import cast, Coroutine, Dict, List, Optional
-from transformers import PreTrainedTokenizerFast
 
+from lighteval.models.abstract_model import LightevalModel
 from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointResponse
 from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn
 from lighteval.tasks.requests import GreedyUntilRequest, LoglikelihoodRequest, LoglikelihoodRollingRequest
 from lighteval.utils import is_openai_available
 
 if is_openai_available():
+    import tiktoken
     from openai.types import Completion
     from openai import NOT_GIVEN
+    from tiktoken import Encoding
 
 
 SOMEWHAT_OPEN_OPENAI_MODELS =  ["davinci-002", "babbage-002"]
-
-
-class TiktokenTokenizerWrapper:
-    def __init__(self, model_id: str):
-        import tiktoken
-        self.encoding = tiktoken.encoding_for_model(model_id)
-    
-    def encode(self, input_text: str, add_special_tokens: bool= True) -> List[int]:
-        return self.encoding.encode(input_text, allowed_special= 'all' if add_special_tokens else set())
-    
-    def convert_token_to_id(self, token:str) -> int:
-        return self.encoding.encode_single_token(token)
-
-    @property
-    def eos_token_id(self):
-        return self.encoding.eot_token
-    
-    @property
-    def eos_token(self):
-        return self.encoding.decode_single_token_bytes(self.eos_token_id).decode()
 
 
 class OpenAIModel(EndpointModel):
@@ -43,7 +25,7 @@ class OpenAIModel(EndpointModel):
         import openai
         self.async_client: openai.AsyncOpenAI = openai.AsyncOpenAI()
         self.client : openai.OpenAI = openai.OpenAI()
-        self._tokenizer = TiktokenTokenizerWrapper(model_id)
+        self.tokenizer = self.Tokenizer(model_id)
         self.model_id = model_id
         
 
@@ -154,13 +136,29 @@ class OpenAIModel(EndpointModel):
         return super(OpenAIModel, self).loglikelihood_rolling(requests, override_bs)
 
     @property
-    def tokenizer(self):
-        return self._tokenizer
-
-    @property
     def add_special_tokens(self):
         return True
 
     @property
     def max_length(self) -> int:
         return OpenAIModel._DEFAULT_MAX_LENGTH
+    
+    class Tokenizer(LightevalModel.Tokenizer):
+        encoding: Encoding
+
+        def __init__(self, model_id: str):
+            self.encoding = tiktoken.encoding_for_model(model_id)
+        
+        def encode(self, input_text: str, add_special_tokens: bool= True) -> List[int]:
+            return self.encoding.encode(input_text, allowed_special= 'all' if add_special_tokens else set())
+        
+        def convert_token_to_id(self, token:str) -> int:
+            return self.encoding.encode_single_token(token)
+
+        @property
+        def eos_token_id(self):
+            return self.encoding.eot_token
+        
+        @property
+        def eos_token(self):
+            return self.encoding.decode_single_token_bytes(self.eos_token_id).decode()

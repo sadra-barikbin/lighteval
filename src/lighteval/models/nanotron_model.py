@@ -85,7 +85,7 @@ class NanotronLightevalModel(LightevalModel):
         self,
         checkpoint_path: str,
         model_args: ModelArgs,
-        tokenizer: TokenizerArgs,
+        tokenizer_args: TokenizerArgs,
         parallel_context: ParallelContext,
         parallel_config: ParallelismArgs,
         lighteval_config: LightEvalConfig,
@@ -131,12 +131,13 @@ class NanotronLightevalModel(LightevalModel):
             self.model_config.num_hidden_layers = 1
 
         self._add_special_tokens = add_special_tokens
-        self._tokenizer = self._create_auto_tokenizer(
-            pretrained=tokenizer.tokenizer_name_or_path,
+        hf_tokenizer = self._create_auto_tokenizer(
+            pretrained=tokenizer_args.tokenizer_name_or_path,
             env_config=env_config,
             trust_remote_code=trust_remote_code,
         )
-        self._tokenizer.model_max_length = self.max_length
+        hf_tokenizer.model_max_length = self.max_length
+        self.tokenizer: LightevalModel.HFTokenizer = self.HFTokenizer.from_hf_tokenizer(hf_tokenizer)
 
         model_config_cls = self.model_config.__class__.__name__
         if model_class is not None:
@@ -211,30 +212,26 @@ class NanotronLightevalModel(LightevalModel):
 
         self.multichoice_continuations_start_space = multichoice_continuations_start_space
 
-    @property
-    def tokenizer(self):
-        return self._tokenizer
-
     def _create_auto_tokenizer(
         self,
         *,
         pretrained: str,
-        tokenizer: Optional[str] = None,
+        tokenizer_name: Optional[str] = None,
         env_config: EnvConfig = None,
         trust_remote_code: bool = False,
-    ) -> transformers.PreTrainedTokenizer:
+    ) -> transformers.PreTrainedTokenizerBase:
         """Returns a pre-trained tokenizer from a pre-trained tokenizer configuration."""
 
         try:
             tokenizer = AutoTokenizer.from_pretrained(
-                pretrained if tokenizer is None else tokenizer,
+                pretrained if tokenizer_name is None else tokenizer_name,
                 cache_dir=env_config.cache_dir,
                 token=env_config.token,
                 trust_remote_code=trust_remote_code,
             )
         except RecursionError:
             tokenizer = AutoTokenizer.from_pretrained(
-                pretrained if tokenizer is None else tokenizer,
+                pretrained if tokenizer_name is None else tokenizer_name,
                 cache_dir=env_config.cache_dir,
                 token=env_config.token,
                 unk_token="<unk>",
@@ -287,8 +284,8 @@ class NanotronLightevalModel(LightevalModel):
         for attr in seqlen_config_attrs:
             if hasattr(self.model_config, attr):
                 return getattr(self.model_config, attr)
-        if hasattr(self.tokenizer, "model_max_length"):
-            return self.tokenizer.model_max_length
+        if hasattr(self.tokenizer.hf_tokenizer, "model_max_length"):
+            return self.tokenizer.hf_tokenizer.model_max_length
         return self._DEFAULT_MAX_LENGTH
 
     @property
@@ -320,23 +317,6 @@ class NanotronLightevalModel(LightevalModel):
         batch_size = forward_batch()
         logger.warning("Determined largest batch size: %d", batch_size)
         return batch_size
-
-    def tok_encode(self, string: str, add_special_tokens: Optional[bool] = None) -> TokenSequence:
-        # TODO: Merge `tok_encode_batch` here.
-        if add_special_tokens is None:
-            add_special_tokens = self.add_special_tokens
-        return self.tokenizer.encode(string, add_special_tokens=add_special_tokens)
-
-    def tok_encode_batch(self, strings: List[str]) -> TokenSequence:
-        return self.tokenizer(
-            strings,
-            padding=True,
-            add_special_tokens=self.add_special_tokens,
-            return_tensors="pt",
-        )
-
-    def tok_decode(self, tokens: torch.LongTensor) -> List[str]:
-        return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
 
     def _model_call(self, inputs: torch.Tensor) -> torch.Tensor:
         return self.model(inputs)
@@ -424,7 +404,7 @@ class NanotronLightevalModel(LightevalModel):
             if request.context == "":
                 request.tokenized_context = [self.tokenizer.eos_token_id]
             else:
-                request.tokenized_context = self.tok_encode(request.context)
+                request.tokenized_context = self.tokenizer.tok_encode(request.context, self.add_special_tokens)
 
             # Some models tokenizer want a space at the beginning and other not
             continuations = [self._check_continuations_start_space(c) for c in request.choices]
@@ -454,10 +434,10 @@ class NanotronLightevalModel(LightevalModel):
             if request.context == "":
                 # This shouldn't be BOS ?
                 request.tokenized_context = [self.tokenizer.eos_token_id]
-                request.tokenized_continuation = self.tok_encode(request.choice)
+                request.tokenized_continuation = self.tokenizer.tok_encode(request.choice, self.add_special_tokens)
             else:
                 # The following line is mandatory for compatibility with the harness
-                request.tokenized_context, request.tokenized_continuation = self.tok_encode_pair(
+                request.tokenized_context, request.tokenized_continuation = self.tokenizer.tok_encode_pair(
                     request.context, request.choice
                 )
 
@@ -1325,6 +1305,9 @@ class NanotronLightevalModel(LightevalModel):
             return []
 
         return dataset.get_original_order(res)
+    
+    class Tokenizer(LightevalModel.Tokenizer):
+        pass
 
 
 class MultiTokenEOSCriteria(transformers.StoppingCriteria):
@@ -1333,7 +1316,7 @@ class MultiTokenEOSCriteria(transformers.StoppingCriteria):
     def __init__(
         self,
         sequence: str,
-        tokenizer: transformers.PreTrainedTokenizer,
+        tokenizer: transformers.PreTrainedTokenizerBase,
         initial_decoder_input_length: int,
         batch_size: int,
     ):

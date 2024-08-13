@@ -20,17 +20,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import asyncio
-from typing import Coroutine
-
 import requests
 from huggingface_hub import (
-    TextGenerationOutput,
     InferenceClient,
     AsyncInferenceClient
 )
 from transformers import AutoTokenizer
-
+from lighteval.models.abstract_model import LightevalModel
 from lighteval.models.endpoints.inference_endpoint_model import InferenceEndpointModel
 
 
@@ -56,7 +52,9 @@ class ModelClient(InferenceEndpointModel):
             raise ValueError("Error occured when fetching info: " + str(self.model_info))
         if model_id:
             self.model_info["model_id"] = model_id
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
+        self.tokenizer: LightevalModel.HFTokenizer = LightevalModel.HFTokenizer.from_hf_tokenizer(
+            AutoTokenizer.from_pretrained(self.model_info["model_id"])
+        )
         self._add_special_tokens = True
 
         self.async_client = AsyncInferenceClient(model=address, token=auth_token)
@@ -66,18 +64,12 @@ class ModelClient(InferenceEndpointModel):
         self.cache_hook = cache_hook
 
     @property
-    def tokenizer(self):
-        return self._tokenizer
-
-    @property
     def add_special_tokens(self):
         return self._add_special_tokens
 
     @property
     def max_length(self) -> int:
-        if hasattr(self.tokenizer, "model_max_length"):
-            return self.tokenizer.model_max_length
-        return ModelClient._DEFAULT_MAX_LENGTH
+        return self.model_info["max_input_tokens"]
 
     def cleanup(self):
         pass

@@ -29,11 +29,11 @@ import transformers
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizer
 
 from lighteval.data import GenerativeTaskDataset, LoglikelihoodDataset, LoglikelihoodSingleTokenDataset
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
-from lighteval.models.abstract_model import LightevalModel
+from lighteval.models.abstract_model import LightevalModel, TokenSequence
 from lighteval.models.model_config import BaseModelConfig, EnvConfig
 from lighteval.models.model_output import (
     Batch,
@@ -77,7 +77,7 @@ class BaseModel(LightevalModel):
         self.use_chat_template = config.use_chat_template
 
         self._add_special_tokens = config.add_special_tokens if config.add_special_tokens is not None else False
-        self._tokenizer = self._create_auto_tokenizer(config, env_config)
+        self.tokenizer: LightevalModel.HFTokenizer = LightevalModel.HFTokenizer.from_hf_tokenizer(self._create_auto_tokenizer(config, env_config))
 
         # If model_parallel is not set we compare the number of processes with the number of GPUs
         self.model = self._create_auto_model(config, env_config)
@@ -98,10 +98,6 @@ class BaseModel(LightevalModel):
         self.model_sha = config.get_model_sha()
 
         self.precision = _get_dtype(config.dtype, config=self._config)
-
-    @property
-    def tokenizer(self):
-        return self._tokenizer
 
     @property
     def add_special_tokens(self):
@@ -330,7 +326,7 @@ class BaseModel(LightevalModel):
     ) -> GenerateMultiTurnReturn:
         for request in requests:
             request.stop_sequence = as_list(request.stop_sequence) + [self.tokenizer.eos_token]
-            request.tokenized_context = self.tok_encode(request.context)["input_ids"]
+            request.tokenized_context = self.tokenizer.tok_encode(request.context, self.add_special_tokens)["input_ids"]
 
         results = []
 
@@ -355,7 +351,7 @@ class BaseModel(LightevalModel):
             context = request.context[0]
             max_context_size_allowed = self.max_length - max_generated_tokens
 
-            model_inputs = self.tokenizer(
+            model_inputs = self.tokenizer.hf_tokenizer(
                 context,
                 padding=True,
                 truncation=True,
@@ -368,7 +364,7 @@ class BaseModel(LightevalModel):
                 [
                     *[
                         MultiTokenEOSCriteria(
-                            sequence, self.tokenizer, input_ids_shape=model_inputs["input_ids"].shape
+                            sequence, self.tokenizer.hf_tokenizer, input_ids_shape=model_inputs["input_ids"].shape
                         )
                         for sequence in stop_tokens
                     ],
@@ -385,7 +381,7 @@ class BaseModel(LightevalModel):
             )
             model_outputs = model_outputs[0, model_inputs["input_ids"].size(1) :]
             model_generations = [model_outputs]
-            decoded_generation = self.tokenizer.decode(model_outputs)
+            decoded_generation = self.tokenizer.hf_tokenizer.decode(model_outputs)
             for term in stop_tokens:
                 decoded_generation = decoded_generation.split(term)[0]
 
@@ -394,7 +390,7 @@ class BaseModel(LightevalModel):
             for i, multi_turn_context in enumerate(request.context[1:]):
                 multi_turn_context = multi_turn_context.format(model_response=decoded_generation)
 
-                model_inputs = self.tokenizer(
+                model_inputs = self.tokenizer.hf_tokenizer(
                     multi_turn_context,
                     padding=True,
                     truncation=True,
@@ -407,7 +403,7 @@ class BaseModel(LightevalModel):
                     [
                         *[
                             MultiTokenEOSCriteria(
-                                sequence, self.tokenizer, input_ids_shape=model_inputs["input_ids"].shape
+                                sequence, self.tokenizer.hf_tokenizer, input_ids_shape=model_inputs["input_ids"].shape
                             )
                             for sequence in stop_tokens
                         ],
@@ -426,7 +422,7 @@ class BaseModel(LightevalModel):
                 )
                 model_outputs = model_outputs[0, model_inputs["input_ids"].size(1) :]
                 model_generations.append(model_outputs)
-                decoded_generation = self.tokenizer.decode(model_outputs, skip_special_tokens=True)
+                decoded_generation = self.tokenizer.hf_tokenizer.decode(model_outputs, skip_special_tokens=True)
                 input_tokens.append(model_inputs["input_ids"])
 
                 for term in stop_tokens:
@@ -444,7 +440,7 @@ class BaseModel(LightevalModel):
             model_answers = []
             for generation, _ in zip(model_generations, lengths):
                 generation = generation.cpu().tolist()
-                decoded = self.tokenizer.decode(generation, skip_special_tokens=True)
+                decoded = self.tokenizer.hf_tokenizer.decode(generation, skip_special_tokens=True)
                 model_answers.append(decoded)
 
             for answers in batched(model_answers, len(request.context)):
@@ -477,7 +473,7 @@ class BaseModel(LightevalModel):
         """
         for request in requests:
             request.stop_sequence = as_list(request.stop_sequence) + [self.tokenizer.eos_token]
-            request.tokenized_context = self.tok_encode(request.context)
+            request.tokenized_context = self.tokenizer.tok_encode(request.context, self.add_special_tokens)
 
         dataset = GenerativeTaskDataset(requests=requests, num_dataset_splits=self.DATASET_SPLITS)
         starting_batch_size = STARTING_BATCH_SIZE
@@ -533,7 +529,7 @@ class BaseModel(LightevalModel):
 
                 # See doc https://huggingface.co/docs/transformers/v4.38.2/en/pad_truncation#padding-and-truncation
                 # Will do left truncation and padding, as defined when creating the tokenizer
-                tokenized = self.tokenizer(
+                tokenized = self.tokenizer.hf_tokenizer(
                     context,
                     truncation="longest_first",  # we truncate to the model max length if needed
                     padding="longest",  # we pad to the longest sequence
@@ -595,7 +591,7 @@ class BaseModel(LightevalModel):
         """Contains the actual logic of the generation.
         First computes the stop sequences, then generates the predictions, then converts the outputs to GenerateReturn.
         """
-        stopping_criteria = stop_sequences_criteria(self.tokenizer, stop_sequences=stop_tokens, batch=batch)
+        stopping_criteria = stop_sequences_criteria(self.tokenizer.hf_tokenizer, stop_sequences=stop_tokens, batch=batch)
         batch_size, _ = batch.input_ids.shape
 
         # Compute model generation
@@ -642,7 +638,7 @@ class BaseModel(LightevalModel):
             for generation in batched_generations:
                 generation = generation[: len_gens[ix]]
                 result_generations.append(generation)
-                decoded_generation = self.tok_decode([generation])[0]
+                decoded_generation = self.tokenizer.tok_decode([generation])[0]
 
                 for term in stop_tokens:
                     decoded_generation = decoded_generation.split(term)[0]
@@ -682,10 +678,10 @@ class BaseModel(LightevalModel):
         for request in requests:
             if request.context == "":
                 request.tokenized_context = [self.tokenizer.eos_token_id]
-                request.tokenized_continuation = self.tok_encode(request.choice)
+                request.tokenized_continuation = self.tokenizer.tok_encode(request.choice, self.add_special_tokens)
             else:
                 # The following line is mandatory for compatibility with the harness
-                request.tokenized_context, request.tokenized_continuation = self.tok_encode_pair(
+                request.tokenized_context, request.tokenized_continuation = self.tokenizer.tok_encode_pair(
                     request.context, request.choice
                 )
 
@@ -700,7 +696,7 @@ class BaseModel(LightevalModel):
 
         for request in requests:  # tuple of one elem
             request.tokenized_context = [self.tokenizer.eos_token_id]  # Fake context
-            request.tokenized_continuation = self.tok_encode(request.context)
+            request.tokenized_continuation = self.tokenizer.tok_encode(request.context, self.add_special_tokens)
 
         results = self._loglikelihood_tokens(
             requests,
@@ -940,13 +936,13 @@ class BaseModel(LightevalModel):
             if request.context == "":
                 request.tokenized_context = [self.tokenizer.eos_token_id]
             else:
-                request.tokenized_context = self.tok_encode(request.context)
+                request.tokenized_context = self.tokenizer.tok_encode(request.context, self.add_special_tokens)
 
             # Some models tokenizer want a space at the beginning and other not
             continuations = [self._check_continuations_start_space(c) for c in request.choices]
 
             # We must not accidentally prepend a continuation with a start of sentence token.
-            continuations_enc = [self.tok_encode(c, add_special_tokens=False) for c in continuations]
+            continuations_enc = [self.tokenizer.tok_encode(c, add_special_tokens=False) for c in continuations]
             if any(len(c) > 1 for c in continuations_enc):
                 raise ValueError(
                     f"Trying to do single token multiple choice but one choice has several tokens: {continuations_enc}. "
@@ -1036,7 +1032,7 @@ class BaseModel(LightevalModel):
                 del batch_truncated
                 del batch_padded
 
-        return dataset.get_original_order(res)
+        return dataset.get_original_order(res)      
 
 
 class MultiTokenEOSCriteria(transformers.StoppingCriteria):
@@ -1045,7 +1041,7 @@ class MultiTokenEOSCriteria(transformers.StoppingCriteria):
     def __init__(
         self,
         sequence: str,
-        tokenizer: transformers.PreTrainedTokenizer,
+        tokenizer: transformers.PreTrainedTokenizerBase,
         batch: Batch = None,
         input_ids_shape: Tuple[int, int] = None,
     ):
@@ -1076,7 +1072,7 @@ class MultiTokenEOSCriteria(transformers.StoppingCriteria):
 
 
 def stop_sequences_criteria(
-    tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer: transformers.PreTrainedTokenizerBase,
     stop_sequences: list[str],
     batch: Batch,
 ) -> transformers.StoppingCriteriaList:

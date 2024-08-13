@@ -37,6 +37,7 @@ from huggingface_hub import (
 from transformers import AutoTokenizer
 
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
+from lighteval.models.abstract_model import LightevalModel
 from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointResponse
 from lighteval.models.model_config import EnvConfig, InferenceEndpointModelConfig, InferenceModelConfig
 from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn, LoglikelihoodSingleTokenReturn
@@ -111,12 +112,10 @@ class InferenceEndpointModel(EndpointModel):
             self.async_client = AsyncInferenceClient(model=config.model, token=env_config.token)
             self.client = InferenceClient(model=config.model, token=env_config.token)
 
-        self._tokenizer = AutoTokenizer.from_pretrained(self.name)
+        self.tokenizer: LightevalModel.HFTokenizer = LightevalModel.HFTokenizer.from_hf_tokenizer(
+            AutoTokenizer.from_pretrained(self.name)
+        )
         self._add_special_tokens = config.add_special_tokens if config.add_special_tokens is not None else False
-
-    @property
-    def tokenizer(self):
-        return self._tokenizer
 
     @property
     def add_special_tokens(self):
@@ -133,8 +132,8 @@ class InferenceEndpointModel(EndpointModel):
         if self._max_length is not None:
             return self._max_length
 
-        if hasattr(self.tokenizer, "model_max_length"):
-            self._max_length = self.tokenizer.model_max_length
+        if hasattr(self.tokenizer.hf_tokenizer, "model_max_length"):
+            self._max_length = self.tokenizer.hf_tokenizer.model_max_length
         else:
             self._max_length = 2048
         return self._max_length

@@ -121,7 +121,7 @@ class GreedyUntilRequest(Request[ContextType]):
     stop_sequence: Union[str, tuple[str], list[str]]
     generation_size: int
     request_type = RequestType.GREEDY_UNTIL
-    tokenized_context: list[int] = None
+    tokenized_context: Optional[list[int]] = None
     num_samples: int = None
     use_logits: bool = False
 

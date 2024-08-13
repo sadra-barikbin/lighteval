@@ -24,7 +24,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Union
 
 import torch
-from transformers import BatchEncoding
+from transformers import BatchEncoding, PreTrainedTokenizerBase
 
 from lighteval.models.model_config import EnvConfig
 from lighteval.models.model_output import (
@@ -39,7 +39,6 @@ from lighteval.tasks.requests import (
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
     LoglikelihoodSingleTokenRequest,
-    ChatRequest
 )
 
 
@@ -48,6 +47,8 @@ TokenSequence = Union[list[int], torch.LongTensor, torch.Tensor, BatchEncoding]
 
 class LightevalModel(ABC):
     DATASET_SPLITS = 4
+
+    tokenizer: "Tokenizer"
 
     """Abstract model class defining the API that every model to plug into lighteval must follow."""
 
@@ -62,11 +63,6 @@ class LightevalModel(ABC):
     def cleanup(self):
         """Clean up operations if needed, such as closing an endpoint."""
         return
-
-    @property
-    @abstractmethod
-    def tokenizer(self):
-        raise NotImplementedError
 
     @property
     @abstractmethod
@@ -133,34 +129,70 @@ class LightevalModel(ABC):
         """
         return NotImplemented
     
-    @abstractmethod
-    def chat(self, requests: list[ChatRequest])
+    class Tokenizer:
+        
+        @abstractmethod
+        def tok_encode(self, str_to_encode: str | list[str], add_special_tokens: Optional[bool] = None) -> TokenSequence:
+            ...
 
-    # Tokenization utils
-    def tok_encode(self, str_to_encode: str | list[str], add_special_tokens: Optional[bool] = None) -> TokenSequence:
-        if add_special_tokens is None:
-            add_special_tokens = self.add_special_tokens
-        if isinstance(str_to_encode, str):
-            return self.tokenizer.encode(str_to_encode, add_special_tokens=add_special_tokens)
-        return self.tokenizer(
-            str_to_encode,
-            padding=True,
-            add_special_tokens=add_special_tokens,
-            return_tensors="pt",
-        )
+        @abstractmethod
+        def tok_encode_pair(self, context: str, continuation: str) -> tuple[TokenSequence]:
+            ...
 
-    def tok_encode_pair(self, context, continuation) -> tuple[TokenSequence]:
-        """Encodes a context, continuation pair by taking care of the spaces in between."""
-        n_spaces = len(context) - len(context.rstrip())
-        if n_spaces > 0:
-            continuation = context[-n_spaces:] + continuation
-            context = context[:-n_spaces]
-        whole_enc = self.tok_encode(context + continuation)
-        context_enc = self.tok_encode(context)
-        context_enc_len = len(context_enc)
-        # This way context might steal some of the cont. from its beginning.
-        continuation_enc = whole_enc[context_enc_len:]
-        return context_enc, continuation_enc
+        @abstractmethod
+        @property
+        def eos_token(self):
+            ...
+        
+        @abstractmethod
+        @property
+        def eos_token_id(self):
+            ...
 
-    def tok_decode(self, tokens: torch.LongTensor) -> list[str]:
-        return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
+
+    class HFTokenizer(Tokenizer):
+        hf_tokenizer: PreTrainedTokenizerBase
+
+        @staticmethod
+        def from_hf_tokenizer(cls, hf_tokenizer: PreTrainedTokenizerBase) -> "LightevalModel.HFTokenizer":
+            tokenizer = LightevalModel.HFTokenizer()
+            tokenizer.hf_tokenizer = hf_tokenizer
+            return tokenizer
+        
+        def tok_encode(self, str_to_encode: str | list[str], add_special_tokens: Optional[bool] = None) -> TokenSequence:
+            if isinstance(str_to_encode, str):
+                return self.hf_tokenizer.encode(str_to_encode, add_special_tokens=add_special_tokens)
+            return self(
+                str_to_encode,
+                padding=True,
+                add_special_tokens=add_special_tokens,
+                return_tensors="pt",
+            )
+
+        def tok_encode_pair(self, context: str, continuation: str) -> tuple[TokenSequence]:
+            """Encodes a context, continuation pair by taking care of the spaces in between."""
+            n_spaces = len(context) - len(context.rstrip())
+            if n_spaces > 0:
+                continuation = context[-n_spaces:] + continuation
+                context = context[:-n_spaces]
+            whole_enc = self.tok_encode(context + continuation)
+            context_enc = self.tok_encode(context)
+            context_enc_len = len(context_enc)
+            # This way context might steal some of the cont. from its beginning.
+            continuation_enc = whole_enc[context_enc_len:]
+            return context_enc, continuation_enc
+
+        def tok_decode(self, tokens: torch.LongTensor) -> list[str]:
+            return self.hf_tokenizer.batch_decode(tokens, skip_special_tokens=True)
+    
+        @property
+        def eos_token(self):
+            return self.hf_tokenizer.eos_token
+        
+        @property
+        def eos_token_id(self):
+            return self.hf_tokenizer.eos_token_id
+        
+        @property
+        def pad_token_id(self):
+            return self.hf_tokenizer.pad_token_id

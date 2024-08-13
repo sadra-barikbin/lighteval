@@ -56,10 +56,6 @@ class DynamicBatchDataset(Dataset):
             requests (List): A list of requests.
             num_dataset_splits (int): The number of dataset splits.
         """
-        # We make sure the requests contain the tokenized versions of their values
-        if any(r.tokenized_context is None for r in requests):
-            raise ValueError("You passed a request for which tokenization had not happened yet.")
-
         # sort the requests using the collate function and save the original order
         enumerated_requests = list(enumerate(requests))
         sorted_enumerated_requests = sorted(enumerated_requests, key=lambda x: self._sorting_criteria(x[1]))
@@ -186,8 +182,9 @@ class LoglikelihoodDataset(DynamicBatchDataset):
         Returns:
             tuple: A tuple containing the sorted input data.
         """
-        toks = request.tokenized_context + request.tokenized_continuation
-        return -len(toks)
+        context_toks = request.tokenized_context or []
+        continuation_toks = request.tokenized_continuation or []
+        return -len(context_toks + continuation_toks)
 
 
 class LoglikelihoodSingleTokenDataset(DynamicBatchDataset):
@@ -205,7 +202,7 @@ class LoglikelihoodSingleTokenDataset(DynamicBatchDataset):
         - any OOMs will happen right away rather than near the end
         """
         # We take only the prompt, no need for the continuation (since it's a list of single tokens)
-        toks = request.tokenized_context
+        toks = request.tokenized_context or []
         return -len(toks)
 
 
@@ -260,7 +257,7 @@ class GenerativeTaskDataset(DynamicBatchDataset):
         Returns:
             Any: The collated data.
         """
-        toks = request.tokenized_context
+        toks = request.tokenized_context or []
         gen_length = request.generation_size
         # The generative task has no limit except the model context
         if gen_length is None:
