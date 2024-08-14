@@ -23,10 +23,12 @@
 import json
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
-from typing import NamedTuple, Optional, Union, TypeVar, Generic
+from typing import List, NamedTuple, Optional, Union, TypeVar, Generic, TypeAlias
 
 from lighteval.utils import as_list
-from transformers import Conversation
+from huggingface_hub import ChatCompletionInputMessage
+
+Conversation: TypeAlias = List[ChatCompletionInputMessage]
 
 
 class RequestType(Enum):

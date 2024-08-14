@@ -27,14 +27,16 @@ from enum import Enum
 from itertools import cycle
 from typing import TYPE_CHECKING, Optional
 
-from transformers import AutoTokenizer, PreTrainedTokenizer
+from transformers import PreTrainedTokenizer
+from huggingface_hub import ChatCompletionInputMessage
 
 from lighteval.logging.hierarchical_logger import hlog_warn
-from lighteval.tasks.requests import Doc
+from lighteval.tasks.requests import Doc, ContextType, Conversation
 
 
 if TYPE_CHECKING:
     from lighteval.tasks.lighteval_task import LightevalTask
+    from lighteval.models.abstract_model import LightevalModel
 
 
 @dataclass
@@ -181,27 +183,25 @@ class FewShotSampler:
     def get_examples_with_chat_template(
         self,
         task: "LightevalTask",
-        tokenizer: AutoTokenizer,
         example: str,
         instruction: str,
         fewshot_ex: list[str],
         system_prompt: str,
-    ):
-        examples = []
+    ) -> Conversation:
+        examples: Conversation = []
         if system_prompt is not None:
-            examples.append({"role": "system", "content": system_prompt})
+            examples.append(ChatCompletionInputMessage(role="system", content=system_prompt))
         for ex in fewshot_ex:
-            examples.append({"role": "user", "content": task.doc_to_text_without_instructions(ex)})
-            examples.append({"role": "assistant", "content": task.doc_to_target(ex)})
+            examples.append(ChatCompletionInputMessage(role="user", content= task.doc_to_text_without_instructions(ex)))
+            examples.append(ChatCompletionInputMessage(role="assistant", content= task.doc_to_target(ex)))
         # We add the actual example
-        examples.append({"role": "user", "content": example})
+        examples.append(ChatCompletionInputMessage(role="user", content= example))
         # We add the initial instruction if present, after the system prompt of before the task
-        if examples[0]["role"] == "system":
-            examples[0]["content"] = examples[0]["content"] + instruction
+        if examples[0].role == "system":
+            examples[0].content = examples[0].content + instruction
         else:
-            examples[0]["content"] = instruction + examples[0]["content"]
-
-        return tokenizer.apply_chat_template(examples, tokenize=False, add_generation_prompt=True)
+            examples[0].content = instruction + examples[0].content
+        return examples
 
     def get_examples(
         self,
@@ -209,7 +209,7 @@ class FewShotSampler:
         example: str,
         instruction: str,
         fewshot_ex: list[str],
-    ):
+    ) -> str:
         if len(fewshot_ex) == 0:
             return instruction + example
 
@@ -268,10 +268,10 @@ class FewShotSampler:
         sampler: Optional[random.Random] = None,
         truncate_few_shots: bool = False,
         max_model_length: Optional[int] = None,
-        tokenizer: Optional[AutoTokenizer] = None,
+        tokenizer: Optional[LightevalModel.Tokenizer] = None,
         use_chat_template=False,
         system_prompt: str = None,
-    ):
+    ) -> ContextType:
         """Returns a fewshot context string that is made up of a prepended description
         (if provided), the `num_fewshot` number of examples, and an appended prompt example.
 
@@ -300,16 +300,14 @@ class FewShotSampler:
         if use_chat_template:
             output = self.get_examples_with_chat_template(
                 task=task,
-                tokenizer=tokenizer,
                 example=example,
                 instruction=instruction,
                 fewshot_ex=fewshot_ex,
                 system_prompt=system_prompt,
             )
-            toks = tokenizer(output)["input_ids"]
         else:
             output = self.get_examples(task=task, example=example, instruction=instruction, fewshot_ex=fewshot_ex)
-            toks = tokenizer(output)["input_ids"]
+        context_length = tokenizer.get_token_count(output)
 
         # If we need to truncate few-shots to fit in the context
         if truncate_few_shots and max_model_length is not None and tokenizer is not None:
@@ -318,19 +316,17 @@ class FewShotSampler:
             # but we probably should
             gen_size = task.generation_size if task.generation_size is not None else 0
 
-            while len(toks) + gen_size > max_model_length and num_effective_fewshots >= 0:
+            while context_length + gen_size > max_model_length and num_effective_fewshots >= 0:
                 num_effective_fewshots -= 1
 
                 if use_chat_template:
                     output = self.get_examples_with_chat_template(
                         task=task,
-                        tokenizer=tokenizer,
                         example=example,
                         instruction=instruction,
                         fewshot_ex=fewshot_ex[:num_effective_fewshots],
                         system_prompt=system_prompt,
                     )
-                    toks = tokenizer(output)["input_ids"]
                 else:
                     output = self.get_examples(
                         task=task,
@@ -338,7 +334,7 @@ class FewShotSampler:
                         instruction=instruction,
                         fewshot_ex=fewshot_ex[:num_effective_fewshots],
                     )
-                    toks = tokenizer(output)["input_ids"]
+                context_length = tokenizer.get_token_count(output)
 
         return output, num_effective_fewshots
 

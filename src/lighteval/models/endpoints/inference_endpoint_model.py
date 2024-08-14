@@ -30,22 +30,30 @@ from huggingface_hub import (
     InferenceClient,
     InferenceEndpoint,
     InferenceEndpointTimeoutError,
+    TextGenerationInput,
+    TextGenerationInputGenerateParameters,
     TextGenerationOutput,
     create_inference_endpoint,
     get_inference_endpoint,
+    ChatCompletionInput,
+    ChatCompletionInputMessage
 )
 from transformers import AutoTokenizer
 
+from lighteval.utils import as_list
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
 from lighteval.models.abstract_model import LightevalModel
-from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointResponse
+from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointResponse, ChatCompletion, Completion
 from lighteval.models.model_config import EnvConfig, InferenceEndpointModelConfig, InferenceModelConfig
-from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn, LoglikelihoodSingleTokenReturn
+from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn, LoglikelihoodSingleTokenReturn, ModelReturn
 from lighteval.tasks.requests import (
     GreedyUntilRequest,
+    GreedyUntilMultiTurnRequest,
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
     LoglikelihoodSingleTokenRequest,
+    Request,
+    Conversation
 )
 
 
@@ -137,6 +145,16 @@ class InferenceEndpointModel(EndpointModel):
         else:
             self._max_length = 2048
         return self._max_length
+    
+
+
+    @_process_request.register
+    def _(self, request: Request[Conversation]) -> Union[ModelReturn, Coroutine[None,None,ModelReturn]]:
+        
+    
+    @_process_request.register
+    def _(self, request: Request[str]) -> TextGenerationOutput:
+        ...
 
     async def _async_process_request(
         self, context: str, stop_tokens: list[str], max_tokens: int
@@ -157,6 +175,7 @@ class InferenceEndpointModel(EndpointModel):
     def _process_request(self, context: str, stop_tokens: list[str], max_tokens: int) -> TextGenerationOutput:
         # Todo: add an option to launch with conversational instead for chat prompts
         # https://huggingface.co/docs/huggingface_hub/v0.20.3/en/package_reference/inference_client#huggingface_hub.AsyncInferenceClient.conversational
+
         generated_text = self.client.text_generation(
             prompt=context,
             details=True,
@@ -166,7 +185,7 @@ class InferenceEndpointModel(EndpointModel):
             # truncate=,
         )
 
-        return generated_text     
+        return generated_text
     
     @singledispatchmethod
     def _process_endpoint_response(self, request, response):

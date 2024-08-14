@@ -1305,9 +1305,6 @@ class NanotronLightevalModel(LightevalModel):
             return []
 
         return dataset.get_original_order(res)
-    
-    class Tokenizer(LightevalModel.Tokenizer):
-        pass
 
 
 class MultiTokenEOSCriteria(transformers.StoppingCriteria):

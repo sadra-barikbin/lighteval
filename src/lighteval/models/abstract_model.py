@@ -39,6 +39,8 @@ from lighteval.tasks.requests import (
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
     LoglikelihoodSingleTokenRequest,
+    ContextType,
+    Conversation
 )
 
 
@@ -140,6 +142,10 @@ class LightevalModel(ABC):
             ...
 
         @abstractmethod
+        def get_token_count(self, input: ContextType) -> int:
+            ...
+
+        @abstractmethod
         @property
         def eos_token(self):
             ...
@@ -185,6 +191,12 @@ class LightevalModel(ABC):
         def tok_decode(self, tokens: torch.LongTensor) -> list[str]:
             return self.hf_tokenizer.batch_decode(tokens, skip_special_tokens=True)
     
+        def get_token_count(self, input: ContextType) -> int:
+            if isinstance(input, str):
+                return len(self.hf_tokenizer(input)["input_ids"])
+            else:
+                return len(self.hf_tokenizer.apply_chat_template(input, add_generation_prompt=True))
+        
         @property
         def eos_token(self):
             return self.hf_tokenizer.eos_token

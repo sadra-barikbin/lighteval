@@ -2,7 +2,16 @@ import asyncio
 from abc import abstractmethod
 from typing import Coroutine, List, Optional, Union, NewType, cast
 
-from huggingface_hub import TextGenerationOutput
+from huggingface_hub import (
+    TextGenerationInput,
+    TextGenerationInputGenerateParameters,
+    ChatCompletionInput,
+    TextGenerationOutput,
+    ChatCompletionInputMessage,
+    ChatCompletionOutput,
+    TextGenerationInput,
+)
+from huggingface_hub.inference._generated.types import BaseInferenceType
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -16,13 +25,14 @@ from lighteval.tasks.requests import (
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
     LoglikelihoodSingleTokenRequest,
+    GreedyUntilMultiTurnRequest,
 )
 from lighteval.utils import as_list
 
 # For Anthropic and OpenAI models.
 Completion = NewType("Completion", object)
 ChatCompletion = NewType("ChatCompletion", object)
-EndpointResponse = Union[TextGenerationOutput, Completion, ChatCompletion]
+EndpointResponse = Union[TextGenerationOutput, ChatCompletionOutput, Completion, ChatCompletion]
 LoglikelihoodRequests = Union[LoglikelihoodRequest, LoglikelihoodRollingRequest]
 
 BATCH_SIZE = 50
@@ -31,43 +41,82 @@ BATCH_SIZE = 50
 class EndpointModel(LightevalModel):
     """Abstract endpoint model.
     """
-
+    name: str
     use_async = True  # set to False for debug - async use is faster
 
     @property
     def disable_tqdm(self) -> bool:
         return False  # no accelerator = this is the main process
-
+    
     @abstractmethod
     def _process_request(
-        self, request: Request,
-    ) -> Union[EndpointResponse, Coroutine[None, None, EndpointResponse]]:
+        self, prepared_request: BaseInferenceType, request: Request,
+    ) -> Union[Coroutine[None, None, ModelReturn], ModelReturn]:
         ...
 
-    @abstractmethod
-    def _process_endpoint_response(self, request: Request, response: EndpointResponse) -> ModelReturn:
-        ...
+    def _prepare_request(self, request: Request) -> TextGenerationInput|ChatCompletionInput:
+        if isinstance(request, (GreedyUntilRequest, GreedyUntilMultiTurnRequest)):
+            stop = as_list(request.stop_sequence) or None
+            max_tokens = request.generation_size
+            context = request.context
+        elif isinstance(request, (LoglikelihoodRequest, LoglikelihoodRollingRequest)):
+            stop = None
+            max_tokens = 1
+            rolling = isinstance(request, LoglikelihoodRollingRequest)
+            if rolling:
+                context = request.context
+            else:
+                if isinstance(request.context, str):
+                    context = request.context + request.choice
+                else:
+                    context = request.context + ChatCompletionInputMessage("assistant", request.choice)
+
+        if isinstance(request.context, str):
+            client_input = TextGenerationInput(
+                inputs=context,
+                parameters=TextGenerationInputGenerateParameters(
+                    details=True,
+                    decoder_input_details=True,
+                    do_sample=False,
+                    seed=42,
+                    max_new_tokens=max_tokens,
+                    stop=stop
+                )
+            )
+        else:
+            client_input = ChatCompletionInput(
+                messages=context,
+                model=self.name,
+                logprobs=True,
+                stop=stop,
+                max_tokens=max_tokens,
+                seed=42,
+                temperature=0.,
+            )
+        return client_input
 
     async def _async_process_batch(
         self,
         requests: list[Request],
     ) -> Coroutine[None, None, list[ModelReturn]]:
-        responses = await asyncio.gather(
+        return await asyncio.gather(
             *[
-                cast(Coroutine[None, None, EndpointResponse], self._process_request(request))
+                cast(
+                    Coroutine[None, None, ModelReturn],
+                    self._process_request(self._prepare_request(request), request)
+                )
                 for request in requests
             ]
         )
-        return [self._process_endpoint_response(req, res) for req, res in zip(requests, responses)]
 
     def _process_batch(
         self,
         requests: list[Request],
     ) -> list[ModelReturn]:
         return [
-            self._process_endpoint_response(
-                request,
-                cast(EndpointResponse, self._process_request(request))
+            cast(
+                ModelReturn,
+                self._process_request(self._prepare_request(request), request)
             )
             for request in requests
         ]

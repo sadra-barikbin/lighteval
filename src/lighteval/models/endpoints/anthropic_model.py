@@ -20,7 +20,7 @@ class AnthropicModel(EndpointModel):
         import anthropic
         self.async_client: anthropic.AsyncAnthropic = anthropic.AsyncAnthropic()
         self.client : anthropic.Anthropic = anthropic.Anthropic()
-        self.tokenizer = LightevalModel.Tokenizer.from_hf_tokenizer(
+        self.tokenizer: LightevalModel.HFTokenizer = LightevalModel.HFTokenizer.from_hf_tokenizer(
             PreTrainedTokenizerFast(tokenizer_object=self.client.get_tokenizer())
         )
         self.tokenizer.eos_token = "<EOT>"
@@ -79,5 +79,5 @@ class AnthropicModel(EndpointModel):
     @property
     def max_length(self) -> int:
         if hasattr(self.tokenizer, "model_max_length"):
-            return self.tokenizer.model_max_length
+            return self.tokenizer.hf_tokenizer.model_max_length
         return AnthropicModel._DEFAULT_MAX_LENGTH
