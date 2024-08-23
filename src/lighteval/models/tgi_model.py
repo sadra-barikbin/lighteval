@@ -20,26 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import asyncio
-import math
-from typing import Coroutine, List, Tuple, Union
-
-import numpy as np
 import requests
-from tqdm import tqdm
+from huggingface_hub import AsyncInferenceClient, InferenceClient
 from transformers import AutoTokenizer
 
-from lighteval.utils import NO_TGI_ERROR_MSG, as_list, is_tgi_available
-from lighteval.models.model_output import LoglikelihoodReturn, GenerateReturn
-from lighteval.tasks.requests import (
-    GreedyUntilRequest,
-    LoglikelihoodRequest
-)
-
-
-if is_tgi_available():
-    from text_generation import AsyncClient
-    from text_generation.types import Response
+from lighteval.models.endpoint_model import InferenceEndpointModel
 
 
 BATCH_SIZE = 50
@@ -51,106 +36,36 @@ def divide_chunks(array, n):
         yield array[i : i + n]
 
 
-class ModelClient:
+class ModelClient(InferenceEndpointModel):
+    _DEFAULT_MAX_LENGTH: int = 4096
 
-    def __init__(
-        self,
-        address,
-        auth_token=None,
-    ) -> None:
-        if not is_tgi_available():
-            raise ImportError(NO_TGI_ERROR_MSG)
-        headers = {} if auth_token is None else {"Authorization": f"Basic {auth_token}"}
+    def __init__(self, address, auth_token=None, model_id=None) -> None:
+        headers = {} if auth_token is None else {"Authorization": f"Bearer {auth_token}"}
 
-        self.client = AsyncClient(address, headers=headers, timeout=240)
-        self.model_info = requests.get(f"{address}/info").json()
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
+        self.client = InferenceClient(address, headers=headers, timeout=240)
+        self.async_client = AsyncInferenceClient(address, headers=headers, timeout=240)
+        self._max_gen_toks = 256
+        self.model_info = requests.get(f"{address}/info", headers=headers).json()
+        if "model_id" not in self.model_info:
+            raise ValueError("Error occured when fetching info: " + str(self.model_info))
+        if model_id:
+            self.model_info["model_id"] = model_id
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_info["model_id"])
+        self._add_special_tokens = True
+        self.use_async = True
+        self.name = address
 
-    def __process_request_generate(self, request: GreedyUntilRequest) -> Response:
-        request.stop_sequence = (
-            (as_list(request.stop_sequence)
-            if request.stop_sequence is not None
-            else []) + ([self.tokenizer.eos_token] if self.tokenizer.eos_token else [])
-        )
-        request.generation_size = request.generation_size or max(self.max_length - len(self.tokenizer.tokenize(request.context,  add_special_tokens=True)), 1)
-        # print(request.context)
-        # print(request.generation_size)
-        # print(request.stop_sequence)
-        generated_text = self.client.generate(
-            request.context,
-            max_new_tokens=request.generation_size,
-            grammar=request.generation_grammar,
-            decoder_input_details=True,
-            stop_sequences=request.stop_sequence,
-            seed=42,
-            truncate=self.max_length,
-        )
+    def set_cache_hook(self, cache_hook):
+        self.cache_hook = cache_hook
 
-        return generated_text
+    @property
+    def tokenizer(self):
+        return self._tokenizer
 
-    async def __process_batch_generate(self, requests: List[GreedyUntilRequest]):
-        return await asyncio.gather(*[self.__process_request_generate(request) for request in requests])
+    @property
+    def add_special_tokens(self):
+        return self._add_special_tokens
 
-    def greedy_until(self, requests: List[GreedyUntilRequest], override_bs=None) -> List[GenerateReturn]:
-        generated_texts: List[GenerateReturn] = []
-
-        batch_size = override_bs if override_bs > 0 else BATCH_SIZE
-
-        for batch in tqdm(
-            divide_chunks(requests, batch_size), total=math.ceil(len(requests) / batch_size), maxinterval=2
-        ):
-            results = asyncio.run(self.__process_batch_generate(batch))
-            for i in range(len(results)):
-                generated_texts.append(
-                    GenerateReturn(result=results[i].generated_text,
-                        padded_tokens_count=0,
-                        generated_tokens=[token.id for token in results[i].details.tokens],
-                        truncated_tokens_count=max(len(self.tokenizer.encode(batch[i].context))-self.max_length, 0)
-                    )
-                )
-        return generated_texts
-    
-    async def __process_batch_logprob(self, requests: List[Tuple[str, str]]):
-        return await asyncio.gather(*[self.__process_request_logprob(request) for request in requests])
-
-    def __process_request_logprob(self, request: Tuple[str, str]) -> Response:
-        context, choice = request
-        return self.client.generate(context + choice, max_new_tokens=1, decoder_input_details=True)
-
-    def loglikelihood(self, requests: List[LoglikelihoodRequest], override_bs=None) -> List[LoglikelihoodReturn]:
-        res: List[LoglikelihoodReturn] = []
-
-        batch_size = override_bs if override_bs > 0 else BATCH_SIZE
-
-        for batch in tqdm(
-            divide_chunks(requests, batch_size), total=math.ceil(len(requests) / batch_size), maxinterval=1
-        ):
-            batch = [(req.context, req.choice) for req in batch]
-            # results = run(self.__process_batch_logprob(batch))
-            results = asyncio.run(self.__process_batch_logprob(batch))
-            details = [result.details.prefill for result in results]
-
-            for detail, (context, choice) in zip(details, batch):
-                tokenized_context = self.tokenizer.tokenize(context, add_special_tokens=True)
-                tokenized_input = self.tokenizer.tokenize(context + choice, add_special_tokens=True)
-
-                i = 0
-                while i < len(tokenized_context) and tokenized_input[i] == tokenized_context[i]:
-                    i += 1
-
-                logprobs = [token.logprob for token in detail[i:]]
-
-                logit_sum: float = np.sum(logprobs)
-                res.append(
-                    LoglikelihoodReturn(
-                        result=(logit_sum, False),
-                        padded_tokens_count=0,
-                        truncated_tokens_count=max(len(tokenized_input)-self.max_length,0),
-                        input_tokens=self.tokenizer.convert_tokens_to_ids(tokenized_input),
-                    )
-                )
-        return res
-    
     @property
     def max_length(self) -> int:
         return self.model_info["max_input_tokens"]
