@@ -1220,6 +1220,7 @@ class NanotronLightevalModel(LightevalModel):
                         return_tensors="pt",
                         max_length=self.max_length - 1,
                         add_special_tokens=self.add_special_tokens,
+                        return_dict=True,
                     )
 
                 batch_model = Batch(
