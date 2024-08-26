@@ -304,7 +304,7 @@ class FewShotSampler:
                 fewshot_ex=fewshot_ex,
                 system_prompt=system_prompt,
             )
-            toks = tokenizer.apply_chat_template(output, add_generation_prompt=True)
+            toks = tokenizer.apply_chat_template(output)
         else:
             output = self.get_examples(task=task, example=example, instruction=instruction, fewshot_ex=fewshot_ex)
             toks = tokenizer(output)["input_ids"]
