@@ -38,27 +38,20 @@ from huggingface_hub import (
     create_inference_endpoint,
     get_inference_endpoint,
 )
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 from transformers import AutoTokenizer
 
-from lighteval.data import GenerativeTaskDataset, LoglikelihoodDataset
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
 from lighteval.models.abstract_model import LightevalModel, ModelInfo
+from lighteval.models.endpoints.endpoint_model import EndpointInput, EndpointOutput
 from lighteval.models.model_config import InferenceEndpointModelConfig, InferenceModelConfig
-from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse, LoglikelihoodSingleTokenResponse
+from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse
 from lighteval.tasks.requests import (
     GreedyUntilRequest,
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
-    LoglikelihoodSingleTokenRequest,
     Request,
 )
-from lighteval.utils.utils import EnvConfig, as_list
-
-
-EndpointInput: TypeAlias = TextGenerationInput | ChatCompletionInput
-EndpointOutput: TypeAlias = TextGenerationOutput | ChatCompletionOutput
+from lighteval.utils.utils import EnvConfig
 
 
 BATCH_SIZE = 50
@@ -214,181 +207,3 @@ class InferenceEndpointModel(LightevalModel):
             truncated_tokens_count=-1,
             padded_tokens_count=-1,
         )
-
-    async def _async_process_batch(
-        self,
-        requests: list[Request],
-    ) -> list[EndpointOutput]:
-        return await asyncio.gather(
-            *[
-                cast(
-                    Coroutine[None, None, EndpointOutput],
-                    self._process_request(self._prepare_request(request), request),
-                )
-                for request in requests
-            ]
-        )
-
-    def _process_batch(
-        self,
-        requests: list[Request],
-    ) -> list[EndpointOutput]:
-        return [
-            cast(EndpointOutput, self._process_request(self._prepare_request(request), request))
-            for request in requests
-        ]
-
-    def _prepare_request(self, request: Request) -> EndpointInput:
-        if isinstance(request, GreedyUntilRequest):
-            stop = as_list(request.stop_sequence) or None
-            max_tokens = request.generation_size
-            context = request.context
-        elif isinstance(request, (LoglikelihoodRequest, LoglikelihoodRollingRequest)):
-            stop = None
-            max_tokens = 1
-            rolling = isinstance(request, LoglikelihoodRollingRequest)
-            if rolling:
-                context = request.context
-            elif isinstance(request.context, str):
-                context = request.context + request.choice
-            else:
-                context = request.context + [ChatCompletionInputMessage(role="assistant", content=request.choice)]
-            if not isinstance(context, str):
-                context = self.tokenizer.apply_chat_template(context, tokenize=False)
-
-        if isinstance(context, str):
-            prepared_request = TextGenerationInput(
-                inputs=context,
-                parameters=TextGenerationInputGenerateParameters(
-                    details=True,
-                    decoder_input_details=True,
-                    do_sample=False,
-                    seed=42,
-                    max_new_tokens=max_tokens,
-                    stop=stop,
-                    return_full_text=False,
-                    top_n_tokens=1,
-                ),
-            )
-        else:
-            prepared_request = ChatCompletionInput(
-                messages=context,
-                model=self.name,
-                logprobs=True,
-                stop=stop,
-                max_tokens=max_tokens,
-                seed=42,
-                temperature=0.0,
-                top_logprobs=1,
-                stream=False,
-            )
-        return prepared_request
-
-    def greedy_until(
-        self,
-        requests: List[GreedyUntilRequest],
-        override_bs: Optional[int] = None,
-    ) -> List[GenerativeResponse]:
-        for request in requests:
-            request.tokenized_context = self.tok_encode(request.context)
-            request.stop_sequence = as_list(request.stop_sequence) + [self.tokenizer.eos_token]
-
-        dataset = GenerativeTaskDataset(requests=requests, num_dataset_splits=self.DATASET_SPLITS)
-        batch_size = override_bs if override_bs is not None else BATCH_SIZE
-        results: List[str] = []
-
-        for _, _ in tqdm(
-            dataset.splits_start_end_iterator(),
-            total=self.DATASET_SPLITS,
-            desc="Splits",
-            position=0,
-            disable=self.disable_tqdm,
-        ):
-            dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=lambda batch: batch)
-
-            for batch in tqdm(
-                dataloader, desc="Greedy generation", position=1, leave=False, disable=self.disable_tqdm
-            ):
-                num_samples = batch[0].num_samples
-                if num_samples > 1:
-                    hlog_err(
-                        "Inference endpoints does not allow sampling evaluations - this is likely to fail or provide problematic results"
-                    )
-
-                if self.use_async:
-                    responses = asyncio.run(self._async_process_batch(batch))
-                else:
-                    responses = self._process_batch(batch)
-                for response, request in zip(responses, batch):
-                    results.append(self._process_generate_response(response, request))
-
-        return dataset.get_original_order(results)
-
-    def loglikelihood(
-        self, requests: list[LoglikelihoodRequest], override_bs: Optional[int] = None
-    ) -> list[LoglikelihoodResponse]:
-        for request in requests:
-            request.tokenized_context = self.tok_encode(request.context)
-            request.tokenized_continuation = self.tok_encode(request.choice)
-        dataset = LoglikelihoodDataset(requests=requests, num_dataset_splits=self.DATASET_SPLITS)
-        batch_size = override_bs if override_bs is not None else BATCH_SIZE
-        results: List[str] = []
-
-        for _, _ in tqdm(
-            dataset.splits_start_end_iterator(),
-            total=self.DATASET_SPLITS,
-            desc="Splits",
-            position=0,
-            disable=self.disable_tqdm,
-        ):
-            dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=lambda batch: batch)
-
-            for batch in tqdm(dataloader, desc="Loglikelihoods", position=1, leave=False, disable=self.disable_tqdm):
-                if self.use_async:
-                    responses = asyncio.run(self._async_process_batch(batch))
-                else:
-                    responses = self._process_batch(batch)
-                for cur_request, response in zip(batch, responses):
-                    results.append(self._process_logprob_response(cast(TextGenerationOutput, response), cur_request))
-
-        return dataset.get_original_order(results)
-
-    def loglikelihood_rolling(
-        self, requests: list[LoglikelihoodRollingRequest], override_bs=None
-    ) -> list[LoglikelihoodResponse]:
-        """This function is used to compute the log likelihood of the context for perplexity metrics."""
-        for request in requests:
-            request.tokenized_context = [self.tokenizer.eos_token_id]
-            request.tokenized_continuation = self.tok_encode(request.context)
-
-        dataset = LoglikelihoodDataset(requests=requests, num_dataset_splits=self.DATASET_SPLITS)
-        batch_size = override_bs if override_bs is not None else BATCH_SIZE
-        results: List[str] = []
-
-        for _, _ in tqdm(
-            dataset.splits_start_end_iterator(),
-            total=self.DATASET_SPLITS,
-            desc="Splits",
-            position=0,
-            disable=self.disable_tqdm,
-        ):
-            dataloader = DataLoader(dataset, batch_size=batch_size, collate_fn=lambda batch: batch)
-
-            for batch in tqdm(
-                dataloader, desc="Loglikelihoods, rolling", position=1, leave=False, disable=self.disable_tqdm
-            ):
-                if self.use_async:
-                    responses = asyncio.run(self._async_process_batch(batch))
-                else:
-                    responses = self._process_batch(batch)
-                for response, request in zip(responses, batch):
-                    results.append(self._process_logprob_response(cast(TextGenerationOutput, response), request))
-
-        return dataset.get_original_order(results)
-
-    def loglikelihood_single_token(
-        self,
-        requests: list[LoglikelihoodSingleTokenRequest],
-        override_bs: Optional[int] = None,
-    ) -> list[LoglikelihoodSingleTokenResponse]:
-        raise ValueError("Endpoint models can't use single token metrics. Change the metric to the standard version")

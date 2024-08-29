@@ -202,3 +202,9 @@ class LightevalModel(ABC):
 
     def tok_decode(self, tokens: torch.LongTensor) -> list[str]:
         return self.tokenizer.batch_decode(tokens, skip_special_tokens=True)
+
+    def get_token_count(self, input: str|Conversation) -> int:
+        if isinstance(input, str):
+            return len(self.tokenizer(input)["input_ids"])
+        else:
+            return len(self.tokenizer.apply_chat_template(input, add_generation_prompt=True))

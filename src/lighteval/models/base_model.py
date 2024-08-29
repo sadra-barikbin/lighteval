@@ -29,7 +29,7 @@ import transformers
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedTokenizerBase
 
 from lighteval.data import GenerativeTaskDataset, LoglikelihoodDataset, LoglikelihoodSingleTokenDataset
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
@@ -113,7 +113,7 @@ class BaseModel(LightevalModel):
         )
 
     @property
-    def tokenizer(self):
+    def tokenizer(self) -> PreTrainedTokenizerBase:
         return self._tokenizer
 
     @property
@@ -1066,7 +1066,7 @@ class MultiTokenEOSCriteria(transformers.StoppingCriteria):
     def __init__(
         self,
         sequence: str,
-        tokenizer: transformers.PreTrainedTokenizer,
+        tokenizer: PreTrainedTokenizerBase,
         batch: Batch = None,
         input_ids_shape: Tuple[int, int] = None,
     ):
@@ -1097,7 +1097,7 @@ class MultiTokenEOSCriteria(transformers.StoppingCriteria):
 
 
 def stop_sequences_criteria(
-    tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer: PreTrainedTokenizerBase,
     stop_sequences: list[str],
     batch: Batch,
 ) -> transformers.StoppingCriteriaList:

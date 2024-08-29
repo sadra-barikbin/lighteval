@@ -27,7 +27,13 @@ from lighteval.models.adapter_model import AdapterModel
 from lighteval.models.base_model import BaseModel
 from lighteval.models.delta_model import DeltaModel
 from lighteval.models.dummy_model import DummyModel
-from lighteval.models.endpoints.endpoint_model import InferenceEndpointModel
+from lighteval.models.endpoints import (
+    EndpointModel,
+    InferenceEndpointModel,
+    AnthropicModel,
+    OpenAIModel,
+)
+from lighteval.models import model_config
 from lighteval.models.model_config import (
     AdapterModelConfig,
     BaseModelConfig,
@@ -37,6 +43,7 @@ from lighteval.models.model_config import (
     InferenceEndpointModelConfig,
     InferenceModelConfig,
     TGIModelConfig,
+    EndpointConfig,
 )
 from lighteval.models.endpoints.tgi_model import ModelClient
 from lighteval.utils.imports import NO_TGI_ERROR_MSG, is_tgi_available
@@ -50,6 +57,7 @@ def load_model(  # noqa: C901
         TGIModelConfig,
         InferenceEndpointModelConfig,
         DummyModelConfig,
+        EndpointConfig,
     ],
     env_config: EnvConfig,
 ) -> Union[BaseModel, AdapterModel, DeltaModel, ModelClient, DummyModel]:
@@ -68,18 +76,23 @@ def load_model(  # noqa: C901
     Returns:
         Union[BaseModel, AdapterModel, DeltaModel, ModelClient]: The model that will be evaluated
     """
-    # Inference server loading
-    if isinstance(config, TGIModelConfig):
-        return load_model_with_tgi(config)
+    # Isn't better for each config to bear the respnsibility for loading its model itself?
+    match type(config):
+        # Inference server loading
+        case model_config.TGIModelConfig:
+            return load_model_with_tgi(config)
 
-    if isinstance(config, InferenceEndpointModelConfig) or isinstance(config, InferenceModelConfig):
-        return load_model_with_inference_endpoints(config, env_config=env_config)
+        case model_config.InferenceEndpointModelConfig | model_config.InferenceModelConfig:
+            return load_model_with_inference_endpoints(config, env_config=env_config)
 
-    if isinstance(config, BaseModelConfig):
-        return load_model_with_accelerate_or_default(config=config, env_config=env_config)
+        case model_config.BaseModelConfig:
+            return load_model_with_accelerate_or_default(config=config, env_config=env_config)
+    
+        case model_config.EndpointConfig:
+            return load_3rd_party_endpoint_model(config=config)
 
-    if isinstance(config, DummyModelConfig):
-        return load_dummy_model(config=config, env_config=env_config)
+        case model_config.DummyModelConfig:
+            return load_dummy_model(config=config, env_config=env_config)
 
 
 def load_model_with_tgi(config: TGIModelConfig):
@@ -110,6 +123,14 @@ def load_model_with_accelerate_or_default(
         model = BaseModel(config=config, env_config=env_config)
 
     return model
+
+
+def load_3rd_party_endpoint_model(config: EndpointConfig) -> EndpointModel:
+    match config.type:
+        case "anthropic":
+            return AnthropicModel(config.model_id)
+        case "openai":
+            return OpenAIModel(config.model_id)
 
 
 def load_dummy_model(config: DummyModelConfig, env_config: EnvConfig):

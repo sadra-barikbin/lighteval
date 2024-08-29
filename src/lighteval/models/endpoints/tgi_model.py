@@ -25,7 +25,7 @@ from huggingface_hub import AsyncInferenceClient, InferenceClient
 from transformers import AutoTokenizer
 
 from lighteval.models.abstract_model import ModelInfo
-from lighteval.models.endpoints.endpoint_model import InferenceEndpointModel
+from lighteval.models.endpoints.inference_endpoint_model import InferenceEndpointModel
 
 
 BATCH_SIZE = 50
@@ -53,7 +53,7 @@ class ModelClient(InferenceEndpointModel):
         self.model_info = ModelInfo(
             model_name=model_id or self.name,
             model_sha=info["model_sha"],
-            model_dtype=info["model_dtype"] or "default",
+            model_dtype=info["model_dtype"] if "model_dtype" in info else "default",
             model_size=-1,
         )
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_info.model_name)
@@ -64,22 +64,12 @@ class ModelClient(InferenceEndpointModel):
         self.cache_hook = cache_hook
 
     @property
-    def tokenizer(self):
-        return self._tokenizer
-
-    @property
     def add_special_tokens(self):
         return self._add_special_tokens
 
     @property
     def max_length(self) -> int:
-        if hasattr(self.tokenizer, "model_max_length"):
-            return self.tokenizer.model_max_length
-        return ModelClient._DEFAULT_MAX_LENGTH
-
-    @property
-    def disable_tqdm(self) -> bool:
-        False
+        return self.model_info["max_input_tokens"]
 
     def cleanup(self):
         pass

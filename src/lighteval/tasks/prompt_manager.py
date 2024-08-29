@@ -37,6 +37,7 @@ from lighteval.utils.utils import as_list
 
 if TYPE_CHECKING:
     from lighteval.tasks.lighteval_task import LightevalTask
+    from lighteval.models.abstract_model import LightevalModel
 
 
 class PromptManager:

@@ -74,11 +74,11 @@ class LoglikelihoodRequest(Request):
     Represents a request for log-likelihood evaluation.
 
     Attributes:
-        choice (str): The choice to evaluate the log-likelihood for.
+        choice (Context): The choice to evaluate the log-likelihood for.
         request_type (RequestType): The type of the request (LOGLIKELIHOOD).
     """
 
-    choice: str
+    choice: Context
     request_type = RequestType.LOGLIKELIHOOD
     tokenized_context: list[int] = None
     tokenized_continuation: list[int] = None

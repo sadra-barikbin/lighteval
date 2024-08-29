@@ -32,7 +32,7 @@ from datasets.download.streaming_download_manager import xPath
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
-from transformers import AutoTokenizer, BatchEncoding
+from transformers import AutoTokenizer, BatchEncoding, PreTrainedTokenizerBase
 
 from lighteval.data import (
     GenDistributedSampler,
@@ -230,7 +230,7 @@ class NanotronLightevalModel(LightevalModel):
         tokenizer: Optional[str] = None,
         env_config: EnvConfig = None,
         trust_remote_code: bool = False,
-    ) -> transformers.PreTrainedTokenizer:
+    ) -> PreTrainedTokenizerBase:
         """Returns a pre-trained tokenizer from a pre-trained tokenizer configuration."""
 
         try:
@@ -1320,7 +1320,7 @@ class MultiTokenEOSCriteria(transformers.StoppingCriteria):
     def __init__(
         self,
         sequence: str,
-        tokenizer: transformers.PreTrainedTokenizer,
+        tokenizer: PreTrainedTokenizerBase,
         initial_decoder_input_length: int,
         batch_size: int,
     ):
