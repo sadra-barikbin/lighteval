@@ -35,7 +35,7 @@ from huggingface_hub import ChatCompletionInputMessage
 
 from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.metrics.metrics import Metrics
-from lighteval.models.tgi_model import ModelClient as TGIModel
+from lighteval.models.endpoints.tgi_model import ModelClient as TGIModel
 from lighteval.pipeline import ParallelismManager, Pipeline, PipelineParameters
 from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig, create_requests_from_tasks
 from lighteval.tasks.requests import (

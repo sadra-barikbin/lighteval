@@ -27,7 +27,7 @@ from lighteval.models.adapter_model import AdapterModel
 from lighteval.models.base_model import BaseModel
 from lighteval.models.delta_model import DeltaModel
 from lighteval.models.dummy_model import DummyModel
-from lighteval.models.endpoint_model import InferenceEndpointModel
+from lighteval.models.endpoints.endpoint_model import InferenceEndpointModel
 from lighteval.models.model_config import (
     AdapterModelConfig,
     BaseModelConfig,
@@ -38,7 +38,7 @@ from lighteval.models.model_config import (
     InferenceModelConfig,
     TGIModelConfig,
 )
-from lighteval.models.tgi_model import ModelClient
+from lighteval.models.endpoints.tgi_model import ModelClient
 from lighteval.utils.imports import NO_TGI_ERROR_MSG, is_tgi_available
 
 
