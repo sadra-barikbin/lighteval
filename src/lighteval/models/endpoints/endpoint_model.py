@@ -21,32 +21,24 @@
 # SOFTWARE.
 
 import asyncio
-from dataclasses import asdict
-from typing import Coroutine, List, Optional, TypeAlias, Union, cast
 from abc import abstractmethod
+from typing import Coroutine, List, Optional, TypeAlias, Union, cast
 
 from huggingface_hub import (
-    AsyncInferenceClient,
     ChatCompletionInput,
     ChatCompletionInputMessage,
     ChatCompletionOutput,
-    InferenceClient,
-    InferenceEndpoint,
-    InferenceEndpointTimeoutError,
     TextGenerationInput,
     TextGenerationInputGenerateParameters,
     TextGenerationOutput,
-    create_inference_endpoint,
-    get_inference_endpoint,
 )
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from transformers import AutoTokenizer
+from typing_extensions import Never
 
 from lighteval.data import GenerativeTaskDataset, LoglikelihoodDataset
-from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
-from lighteval.models.abstract_model import LightevalModel, ModelInfo
-from lighteval.models.model_config import InferenceEndpointModelConfig, InferenceModelConfig
+from lighteval.logging.hierarchical_logger import hlog_err
+from lighteval.models.abstract_model import LightevalModel
 from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse, LoglikelihoodSingleTokenResponse
 from lighteval.tasks.requests import (
     GreedyUntilRequest,
@@ -55,26 +47,41 @@ from lighteval.tasks.requests import (
     LoglikelihoodSingleTokenRequest,
     Request,
 )
-from lighteval.utils.utils import EnvConfig, as_list
+from lighteval.utils.imports import is_anthropic_available, is_openai_available
+from lighteval.utils.utils import as_list
 
+
+if is_anthropic_available():
+    from anthropic.types import Completion, Message
+
+    AnthropicOutput: TypeAlias = Completion | Message
+else:
+    AnthropicOutput: TypeAlias = Never
+if is_openai_available():
+    from openai.types import Completion
+    from openai.types.chat import ChatCompletion
+
+    OpenAIOutput: TypeAlias = Completion | ChatCompletion
+else:
+    OpenAIOutput: TypeAlias = Never
 
 EndpointInput: TypeAlias = TextGenerationInput | ChatCompletionInput
-EndpointOutput: TypeAlias = TextGenerationOutput | ChatCompletionOutput
+EndpointOutput: TypeAlias = TextGenerationOutput | ChatCompletionOutput | OpenAIOutput | AnthropicOutput
 
 
 BATCH_SIZE = 50
 
 
 class EndpointModel(LightevalModel):
-    """Abstract endpoint model.
-    """
+    """Abstract endpoint model."""
+
     name: str
     use_async = True  # set to False for debug - async use is faster
 
     @property
     def disable_tqdm(self) -> bool:
         return False  # no accelerator = this is the main process
-    
+
     async def _async_process_batch(
         self,
         requests: list[Request],
@@ -97,10 +104,12 @@ class EndpointModel(LightevalModel):
             cast(EndpointOutput, self._process_request(self._prepare_request(request), request))
             for request in requests
         ]
-    
+
     @abstractmethod
     def _process_request(
-        self, prepared_request: EndpointInput, request: Request,
+        self,
+        prepared_request: EndpointInput,
+        request: Request,
     ) -> Union[Coroutine[None, None, EndpointOutput], EndpointOutput]:
         ...
 
@@ -149,7 +158,7 @@ class EndpointModel(LightevalModel):
                 stream=False,
             )
         return prepared_request
-    
+
     @abstractmethod
     def _process_generate_response(self, response: EndpointOutput, request: GreedyUntilRequest) -> GenerativeResponse:
         ...

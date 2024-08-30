@@ -86,3 +86,7 @@ def can_load_extended_tasks() -> bool:
 
 
 CANNOT_USE_EXTENDED_TASKS_MSG = "If you want to use extended_tasks, make sure you installed their dependencies using `pip install -e .[extended_tasks]`."
+
+
+def is_anthropic_available() -> bool:
+    return importlib.util.find_spec("anthropic") is not None

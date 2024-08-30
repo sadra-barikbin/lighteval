@@ -36,8 +36,8 @@ from lighteval.utils.utils import as_list
 
 
 if TYPE_CHECKING:
-    from lighteval.tasks.lighteval_task import LightevalTask
     from lighteval.models.abstract_model import LightevalModel
+    from lighteval.tasks.lighteval_task import LightevalTask
 
 
 class PromptManager:
@@ -191,7 +191,7 @@ class PromptManager:
             system_prompt=system_prompt,
             use_chat_template=use_chat_template,
         )
-        toks = self.model.tok_encode(output)
+        toks_cnt = self.model.get_token_count(output)
 
         # If we need to truncate few-shots to fit in the context
         if truncate_few_shots and self.model.max_length is not None and self.model.tokenizer is not None:
@@ -200,7 +200,7 @@ class PromptManager:
             # but we probably should
             gen_size = self.task.generation_size if self.task.generation_size is not None else 0
 
-            while len(toks) + gen_size > self.model.max_length and num_effective_fewshots >= 0:
+            while toks_cnt + gen_size > self.model.max_length and num_effective_fewshots >= 0:
                 num_effective_fewshots -= 1
                 output = self.get_examples(
                     example=example,
@@ -209,7 +209,7 @@ class PromptManager:
                     system_prompt=system_prompt,
                     use_chat_template=use_chat_template,
                 )
-                toks = self.model.tok_encode(output)
+                toks_cnt = self.model.get_token_count(output)
 
         return output, num_effective_fewshots
 
