@@ -20,12 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from functools import singledispatchmethod
-from typing import List, Optional, cast, Coroutine
+from typing import Coroutine, List, Optional, cast
 
 from huggingface_hub import TextGenerationInput
 
-from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointInput, EndpointOutput, OpenAIOutput
+from lighteval.models.endpoints.endpoint_model import EndpointInput, EndpointModel, EndpointOutput, OpenAIOutput
 from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse
 from lighteval.tasks.requests import (
     Conversation,
@@ -63,7 +62,9 @@ class OpenAIModel(EndpointModel):
     def tokenizer(self):
         return self._tokenizer
 
-    def _process_request(self, prepared_request: EndpointInput, request: Request) -> Coroutine[None, None, OpenAIOutput]|OpenAIOutput:
+    def _process_request(
+        self, prepared_request: EndpointInput, request: Request
+    ) -> Coroutine[None, None, OpenAIOutput] | OpenAIOutput:
         client = self.async_client if self.use_async else self.client
         if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
             logprobs = 1
@@ -93,7 +94,9 @@ class OpenAIModel(EndpointModel):
             returns_logits = request.use_logits
 
             if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
-                input_tokens = [self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[:prompt_length]]
+                input_tokens = [
+                    self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[:prompt_length]
+                ]
                 generated_tokens = [
                     self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[prompt_length:]
                 ]
@@ -117,7 +120,9 @@ class OpenAIModel(EndpointModel):
                 padded_tokens_count=-1,
             )
 
-    def _process_logprob_response(self, response: Completion, request: LoglikelihoodRequest | LoglikelihoodRollingRequest) -> LoglikelihoodResponse:
+    def _process_logprob_response(
+        self, response: Completion, request: LoglikelihoodRequest | LoglikelihoodRollingRequest
+    ) -> LoglikelihoodResponse:
         completion = response.choices[0]
 
         len_choice = len(request.tokenized_continuation)

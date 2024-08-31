@@ -1,54 +1,46 @@
-import pytest
-from typing import TypeAlias
+# MIT License
+
+# Copyright (c) 2024 The HuggingFace Team
+
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 from collections import defaultdict
+from typing import TypeAlias
+from unittest.mock import patch
 
-from lighteval.models.endpoints import OpenAIModel
-from lighteval.tasks.requests import GreedyUntilRequest, LoglikelihoodRequest
+import pytest
+from huggingface_hub import ChatCompletionInputMessage
+
 from lighteval.logging.evaluation_tracker import EvaluationTracker
-from lighteval.models.model_config import EndpointConfig, EnvConfig
-from lighteval.models.model_loader import load_model
-from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig
-from lighteval.tasks.default_prompts import arc
 from lighteval.metrics.metrics import Metrics
-from lighteval.tasks.requests import RequestType, Doc, Request
+from lighteval.models.endpoints import OpenAIModel
+from lighteval.pipeline import ParallelismManager, Pipeline, PipelineParameters
+from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig, create_requests_from_tasks
+from lighteval.tasks.requests import Doc, GreedyUntilRequest, Request, RequestType
 
 
-@pytest.fixture(scope='module', params=["davinci-002", "gpt-3.5-turbo-0613"])
+@pytest.fixture(scope="module", params=["davinci-002", "gpt-3.5-turbo-0613"])
 def openai_model(request):
-    model =  OpenAIModel(request.param)
+    model = OpenAIModel(request.param)
     yield model
     model.cleanup()
 
-
-def test_openai_model_api(openai_model: OpenAIModel):
-    requests = [
-        GreedyUntilRequest("test_task", 0, 0, "How many hands does human have?", [], 5, num_samples=1),
-        GreedyUntilRequest("test_task", 0, 0, "How many eyes does human have?", [], 5, num_samples=1)
-    ]
-    returns = openai_model.greedy_until(requests)
-    assert len(returns) == 2
-    assert all((type(r.result) is str) and len(r.result) for r in returns)
-
-    gpt35t =  OpenAIModel("gpt-3.5-turbo-instruct")
-
-    requests.append(
-        GreedyUntilRequest("test_task", 0, 0, "How many ears does human have?", [], 5, num_samples=1, use_logits=True),
-    )
-
-    with pytest.raises(ValueError, match=r"OpenAI models could not process requests with `use_logits=True`"):
-        gpt35t.greedy_until(requests)
-
-    requests = [
-        LoglikelihoodRequest("test_task", 0, 0, "How many hands does human have?", "Two"),
-        LoglikelihoodRequest("test_task", 0, 0, "How many eyes does human have?", "Two")
-    ]
-    returns = openai_model.loglikelihood(requests)
-    assert len(returns) == 2
-    
-    with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
-        gpt35t.loglikelihood(requests)
-    
-    openai_model.tok_encode("Hi there")
 
 RequestDict: TypeAlias = dict[RequestType, list[Request]]
 
@@ -111,24 +103,38 @@ class TestOpenAIModel:
                 result[req_type].extend(doc_result[req_type])
         return result
 
-    def test_greedy_until(self, zero_shot_request_dict: RequestDict, tgi_model: TGIModel):
-        returns = tgi_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
+    def test_wrong_input(self):
+        gpt35t = OpenAIModel("gpt-3.5-turbo-instruct")
+        requests = [
+            GreedyUntilRequest(
+                "test_task", 0, 0, "How many ears does human have?", [], 5, num_samples=1, use_logits=True
+            )
+        ]
+        with pytest.raises(ValueError, match=r"OpenAI models could not process requests with `use_logits=True`"):
+            gpt35t.greedy_until(requests)
+
+        with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+            gpt35t.loglikelihood(requests)
+
+    def test_greedy_until(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
+        returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
         assert len(returns) == 2
         assert all(r.result is not None for r in returns)
 
-    def test_loglikelihood(self, zero_shot_request_dict: RequestDict, tgi_model: TGIModel):
-        returns = tgi_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
+    def test_loglikelihood(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
+        returns = openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
         assert len(returns) == 4
         assert all(r.result is not None for r in returns)
 
-        returns = tgi_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
+        returns = openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
         assert len(returns) == 2
         assert all(r.result is not None for r in returns)
 
     @pytest.mark.parametrize("num_fewshot", [0, 2])
     @pytest.mark.parametrize("use_chat_template", [False, True])
-    def test_integration(self, task: LightevalTask, tgi_model: TGIModel, num_fewshot: int, use_chat_template: bool):
-        env_config = EnvConfig(token=TOKEN, cache_dir=CACHE_PATH)
+    def test_integration(
+        self, task: LightevalTask, openai_model: OpenAIModel, num_fewshot: int, use_chat_template: bool
+    ):
         evaluation_tracker = EvaluationTracker()
         pipeline_params = PipelineParameters(
             launcher_type=ParallelismManager.NONE,
@@ -140,7 +146,7 @@ class TestOpenAIModel:
                 tasks=f"custom|test|{num_fewshot}|0",
                 pipeline_parameters=pipeline_params,
                 evaluation_tracker=evaluation_tracker,
-                model=tgi_model,
+                model=openai_model,
             )
         task_dict = {"custom|test": task}
         evaluation_tracker.task_config_logger.log(task_dict)
@@ -152,7 +158,7 @@ class TestOpenAIModel:
             task_dict=task_dict,
             fewshot_dict=fewshot_dict,
             num_fewshot_seeds=pipeline_params.num_fewshot_seeds,
-            lm=tgi_model,
+            lm=openai_model,
             max_samples=pipeline_params.max_samples,
             evaluation_tracker=evaluation_tracker,
             use_chat_template=use_chat_template,
