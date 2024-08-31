@@ -20,7 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from functools import singledispatchmethod
 from typing import Coroutine, Optional, Union, cast
 
 from huggingface_hub import ChatCompletionInput, TextGenerationInput
@@ -34,7 +33,7 @@ from lighteval.utils.imports import is_anthropic_available
 
 if is_anthropic_available():
     from anthropic import NOT_GIVEN
-    from anthropic.types import Completion
+    from anthropic.types import Completion, Message
     from anthropic.types.message_create_params import ToolChoiceToolChoiceTool
     from anthropic.types.tool_param import InputSchemaTyped, ToolParam
 
@@ -81,7 +80,7 @@ class AnthropicModel(EndpointModel):
         self,
         prepared_request: EndpointInput,
         request: Request,
-    ) -> Union[Coroutine[None, None, AnthropicOutput], AnthropicOutput]:
+    ) -> Coroutine[None, None, AnthropicOutput]|AnthropicOutput:
         client = self.async_client if self.use_async else self.client
         if isinstance(prepared_request, TextGenerationInput):
             return client.completions.create(
@@ -101,18 +100,20 @@ class AnthropicModel(EndpointModel):
                 **self.hf_to_anthropic_tool_param(prepared_request),
             )
 
-    @singledispatchmethod
-    def _process_endpoint_response(self, request, response):
-        ...
-
     def _process_generate_response(self, response: EndpointOutput, request: GreedyUntilRequest) -> GenerativeResponse:
-        response = cast(Completion, response)
-
-        return GenerativeResponse(
-            result=response.completion,
-            truncated_tokens_count=-1,
-            padded_tokens_count=-1,
-        )
+        if isinstance(response, Completion):
+            return GenerativeResponse(
+                result=response.completion,
+                truncated_tokens_count=-1,
+                padded_tokens_count=-1,
+            )
+        else:
+            response = cast(Message, response)
+            return GenerativeResponse(
+                result=response.content[0].text,
+                truncated_tokens_count=-1,
+                padded_tokens_count=-1,
+            )
 
     def loglikelihood(
         self, requests: list[LoglikelihoodRequest], override_bs: Optional[int] = None

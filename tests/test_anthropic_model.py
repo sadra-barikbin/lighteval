@@ -4,6 +4,13 @@ from lighteval.models.endpoints import AnthropicModel
 from lighteval.tasks.requests import GreedyUntilRequest
 
 
+@pytest.fixture(scope='module')
+def anthropic_model():
+    model =  AnthropicModel("claude-3-5-sonnet-20240620")
+    yield model
+    model.cleanup()
+
+
 def test_anthropic_model_api(anthropic_model: AnthropicModel):
     requests = [
         GreedyUntilRequest("test_task", 0, 0, "How many hands does human have?", [], 5, num_samples=1),

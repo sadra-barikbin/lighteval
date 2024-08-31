@@ -21,15 +21,18 @@
 # SOFTWARE.
 
 from functools import singledispatchmethod
-from typing import List, Optional, cast
+from typing import List, Optional, cast, Coroutine
 
-from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointOutput
+from huggingface_hub import TextGenerationInput
+
+from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointInput, EndpointOutput, OpenAIOutput
 from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse
 from lighteval.tasks.requests import (
     Conversation,
     GreedyUntilRequest,
     LoglikelihoodRequest,
     LoglikelihoodRollingRequest,
+    Request,
 )
 from lighteval.utils.imports import is_openai_available
 
@@ -38,6 +41,7 @@ if is_openai_available():
     import tiktoken
     from openai import NOT_GIVEN
     from openai.types import Completion
+    from openai.types.chat import ChatCompletion
     from tiktoken import Encoding
 
 
@@ -59,55 +63,61 @@ class OpenAIModel(EndpointModel):
     def tokenizer(self):
         return self._tokenizer
 
-    def _process_request(self, context: str, stop_tokens: list[str], max_tokens: int) -> Completion:
+    def _process_request(self, prepared_request: EndpointInput, request: Request) -> Coroutine[None, None, OpenAIOutput]|OpenAIOutput:
+        client = self.async_client if self.use_async else self.client
         if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
             logprobs = 1
         else:
             logprobs = NOT_GIVEN
 
-        return self.async_client.completions.create(
-            prompt=context,
-            stop=stop_tokens or NOT_GIVEN,
-            logprobs=logprobs,
-            max_tokens=max_tokens,
-            model=self.name,
-            temperature=0.0,
-            echo=True,
-            seed=42,
-        )
-
-    @singledispatchmethod
-    def _process_endpoint_response(self, request, response):
-        ...
-
-    @_process_endpoint_response.register
-    def _(self, request: GreedyUntilRequest, response: EndpointOutput) -> GenerativeResponse:
-        response: Completion = cast(Completion, response)
-        completion = response.choices[0]
-        prompt_length = response.usage.prompt_tokens
-        returns_logits = request.use_logits
-
-        if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
-            input_tokens = [self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[:prompt_length]]
-            generated_tokens = [
-                self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[prompt_length:]
-            ]
-            logits = completion.logprobs.token_logprobs[1:] if returns_logits else None
+        if isinstance(prepared_request, TextGenerationInput):
+            return client.completions.create(
+                prompt=prepared_request.inputs,
+                stop=prepared_request.parameters.stop or NOT_GIVEN,
+                logprobs=logprobs,
+                max_tokens=prepared_request.parameters.max_new_tokens or NOT_GIVEN,
+                model=self.name,
+                temperature=0.0,
+                echo=True,
+                seed=42,
+            )
         else:
-            input_tokens = generated_tokens = logits = None
+            return client.chat.completions.create(
+                **prepared_request,
+            )
 
-        return GenerativeResponse(
-            result=completion.text,
-            input_tokens=input_tokens,
-            generated_tokens=generated_tokens,
-            logits=logits,
-            truncated_tokens_count=-1,
-            padded_tokens_count=-1,
-        )
+    def _process_generate_response(self, response: EndpointOutput, request: GreedyUntilRequest) -> GenerativeResponse:
+        if isinstance(response, Completion):
+            completion = response.choices[0]
+            prompt_length = response.usage.prompt_tokens
+            returns_logits = request.use_logits
 
-    @_process_endpoint_response.register
-    def _(self, request: LoglikelihoodRequest, response: EndpointOutput) -> LoglikelihoodResponse:
-        response: Completion = cast(Completion, response)
+            if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
+                input_tokens = [self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[:prompt_length]]
+                generated_tokens = [
+                    self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[prompt_length:]
+                ]
+                logits = completion.logprobs.token_logprobs[1:] if returns_logits else None
+            else:
+                input_tokens = generated_tokens = logits = None
+
+            return GenerativeResponse(
+                result=completion.text,
+                input_tokens=input_tokens,
+                generated_tokens=generated_tokens,
+                logits=logits,
+                truncated_tokens_count=-1,
+                padded_tokens_count=-1,
+            )
+        else:
+            response = cast(ChatCompletion, response)
+            return GenerativeResponse(
+                result=response.choices[0].message.content,
+                truncated_tokens_count=-1,
+                padded_tokens_count=-1,
+            )
+
+    def _process_logprob_response(self, response: Completion, request: LoglikelihoodRequest | LoglikelihoodRollingRequest) -> LoglikelihoodResponse:
         completion = response.choices[0]
 
         len_choice = len(request.tokenized_continuation)
