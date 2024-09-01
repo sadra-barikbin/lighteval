@@ -103,32 +103,35 @@ class TestOpenAIModel:
                 result[req_type].extend(doc_result[req_type])
         return result
 
-    def test_wrong_input(self):
-        gpt35t = OpenAIModel("gpt-3.5-turbo-instruct")
-        requests = [
-            GreedyUntilRequest(
-                "test_task", 0, 0, "How many ears does human have?", [], 5, num_samples=1, use_logits=True
-            )
-        ]
-        with pytest.raises(ValueError, match=r"OpenAI models could not process requests with `use_logits=True`"):
-            gpt35t.greedy_until(requests)
-
-        with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
-            gpt35t.loglikelihood(requests)
-
     def test_greedy_until(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
-        returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
-        assert len(returns) == 2
-        assert all(r.result is not None for r in returns)
+        if openai_model.name == "davinci-002":
+            returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
+            assert len(returns) == 2
+            assert all(r.result is not None for r in returns)
+        else:
+            requests = [
+                GreedyUntilRequest(
+                    "test_task", 0, 0, "How many ears does human have?", [], [], 5, num_samples=1, use_logits=True
+                )
+            ]
+            with pytest.raises(ValueError, match=r"OpenAI models could not process requests with `use_logits=True`"):
+                openai_model.greedy_until(requests)
 
     def test_loglikelihood(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
-        returns = openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
-        assert len(returns) == 4
-        assert all(r.result is not None for r in returns)
+        if openai_model.name == "davinci-002":
+            returns = openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
+            assert len(returns) == 4
+            assert all(r.result is not None for r in returns)
 
-        returns = openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
-        assert len(returns) == 2
-        assert all(r.result is not None for r in returns)
+            returns = openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
+            assert len(returns) == 2
+            assert all(r.result is not None for r in returns)
+        else:
+            with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+                openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
+            
+            with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+                openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
 
     @pytest.mark.parametrize("num_fewshot", [0, 2])
     @pytest.mark.parametrize("use_chat_template", [False, True])
@@ -164,6 +167,9 @@ class TestOpenAIModel:
             use_chat_template=use_chat_template,
             system_prompt=pipeline_params.system_prompt,
         )
+        if openai_model.name == "gpt-3.5-turbo-0613":
+            del requests[RequestType.LOGLIKELIHOOD]
+            del requests[RequestType.LOGLIKELIHOOD_ROLLING]
         pipeline.requests = requests
         pipeline.docs = docs
         evaluation_tracker.task_config_logger.log(task_dict)

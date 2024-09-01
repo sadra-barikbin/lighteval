@@ -41,8 +41,8 @@ from huggingface_hub import (
 from transformers import AutoTokenizer
 
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
-from lighteval.models.abstract_model import LightevalModel, ModelInfo
-from lighteval.models.endpoints.endpoint_model import EndpointInput, EndpointOutput
+from lighteval.models.abstract_model import ModelInfo
+from lighteval.models.endpoints.endpoint_model import EndpointModel, EndpointInput, EndpointOutput
 from lighteval.models.model_config import InferenceEndpointModelConfig, InferenceModelConfig
 from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse
 from lighteval.tasks.requests import (
@@ -57,7 +57,7 @@ from lighteval.utils.utils import EnvConfig
 BATCH_SIZE = 50
 
 
-class InferenceEndpointModel(LightevalModel):
+class InferenceEndpointModel(EndpointModel):
     """InferenceEndpointModels can be used both with the free inference client, or with inference
     endpoints, which will use text-generation-inference to deploy your model for the duration of the evaluation.
     """
@@ -159,6 +159,32 @@ class InferenceEndpointModel(LightevalModel):
         else:
             self._max_length = 2048
         return self._max_length
+    
+    def _prepare_request(self, request: Request) -> EndpointInput:
+        if not isinstance(request.context, str) and isinstance(request, (LoglikelihoodRequest, LoglikelihoodRollingRequest)):
+            stop = None
+            max_tokens = 1
+            rolling = isinstance(request, LoglikelihoodRollingRequest)
+            if rolling:
+                context = request.context
+            else:
+                context = request.context + [ChatCompletionInputMessage(role="assistant", content=request.choice)]
+            context = self.tokenizer.apply_chat_template(request.context, tokenize=False)
+            return TextGenerationInput(
+                inputs=context,
+                parameters=TextGenerationInputGenerateParameters(
+                    details=True,
+                    decoder_input_details=True,
+                    do_sample=False,
+                    seed=42,
+                    max_new_tokens=max_tokens,
+                    stop=stop,
+                    return_full_text=False,
+                    top_n_tokens=1,
+                ),
+            )
+        else:
+            return super(InferenceEndpointModel, self)._prepare_request(request)
 
     def _process_request(
         self, prepared_request: EndpointInput, request: Request

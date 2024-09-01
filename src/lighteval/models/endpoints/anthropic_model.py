@@ -20,12 +20,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from typing import Coroutine, Optional, Union, cast
+from typing import Coroutine, Optional, cast
 
 from huggingface_hub import ChatCompletionInput, TextGenerationInput
 from transformers import PreTrainedTokenizerFast
 
 from lighteval.models.endpoints.endpoint_model import AnthropicOutput, EndpointInput, EndpointModel, EndpointOutput
+from lighteval.models.abstract_model import ModelInfo
 from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse
 from lighteval.tasks.requests import GreedyUntilRequest, LoglikelihoodRequest, LoglikelihoodRollingRequest, Request
 from lighteval.utils.imports import is_anthropic_available
@@ -49,6 +50,8 @@ class AnthropicModel(EndpointModel):
         self._tokenizer = PreTrainedTokenizerFast(tokenizer_object=self.client.get_tokenizer())
         self.tokenizer.eos_token = "<EOT>"
         self.name = model_id
+        self.model_info = ModelInfo(model_id)
+
 
     @property
     def tokenizer(self) -> PreTrainedTokenizerFast:

@@ -13,7 +13,7 @@
 # limitations under the License.
 import os
 from dataclasses import asdict, dataclass, is_dataclass
-from typing import Any, Union
+from typing import Any, Union, TypeVar
 
 import numpy as np
 from datasets import load_dataset
@@ -109,7 +109,10 @@ def sanitize_numpy(example_dict: dict) -> dict:
     return output_dict
 
 
-def as_list(item: Union[list, tuple, Any]) -> list:
+T = TypeVar("T")
+
+
+def as_list(item: Union[list, tuple, T]) -> list | list[T]:
     """
     Convert the given item into a list.
 

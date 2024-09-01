@@ -22,9 +22,10 @@
 
 from typing import Coroutine, List, Optional, cast
 
-from huggingface_hub import TextGenerationInput
+from huggingface_hub import TextGenerationInput, ChatCompletionInputMessage
 
 from lighteval.models.endpoints.endpoint_model import EndpointInput, EndpointModel, EndpointOutput, OpenAIOutput
+from lighteval.models.abstract_model import ModelInfo
 from lighteval.models.model_output import GenerativeResponse, LoglikelihoodResponse
 from lighteval.tasks.requests import (
     Conversation,
@@ -34,6 +35,7 @@ from lighteval.tasks.requests import (
     Request,
 )
 from lighteval.utils.imports import is_openai_available
+from lighteval.utils.utils import as_list
 
 
 if is_openai_available():
@@ -57,6 +59,7 @@ class OpenAIModel(EndpointModel):
         self.client: openai.OpenAI = openai.OpenAI()
         self._tokenizer = self.Tokenizer(model_id)
         self.name = model_id
+        self.model_info = ModelInfo(model_id)
 
     @property
     def tokenizer(self):
@@ -78,13 +81,19 @@ class OpenAIModel(EndpointModel):
                 logprobs=logprobs,
                 max_tokens=prepared_request.parameters.max_new_tokens or NOT_GIVEN,
                 model=self.name,
-                temperature=0.0,
+                temperature=prepared_request.parameters.temperature,
                 echo=True,
                 seed=42,
             )
         else:
             return client.chat.completions.create(
-                **prepared_request,
+                messages=prepared_request.messages,
+                stop=prepared_request.stop,
+                model=self.name,
+                max_tokens=prepared_request.max_tokens,
+                temperature=prepared_request.temperature,
+                tool_choice=prepared_request.tool_choice,
+                tools=prepared_request.tools,
             )
 
     def _process_generate_response(self, response: EndpointOutput, request: GreedyUntilRequest) -> GenerativeResponse:
@@ -126,6 +135,7 @@ class OpenAIModel(EndpointModel):
         completion = response.choices[0]
 
         len_choice = len(request.tokenized_continuation)
+        print(completion)
         logits = completion.logprobs.token_logprobs[-len_choice - 1 : -1]
         greedy_tokens = list(list(zip(*completion.logprobs.top_logprobs[-len_choice - 1 : -1]))[0])
         max_equal = greedy_tokens == completion.logprobs.tokens[-len_choice - 1 : -1]
@@ -176,6 +186,9 @@ class OpenAIModel(EndpointModel):
     @property
     def max_length(self) -> int:
         return OpenAIModel._DEFAULT_MAX_LENGTH
+    
+    def get_token_count(self, input: str|Conversation) -> int:
+        return self.tokenizer.get_token_count(input)
 
     class Tokenizer:
         encoding: Encoding
@@ -213,6 +226,8 @@ class OpenAIModel(EndpointModel):
                     case model if "gpt-3.5-turbo" in model or "gpt-4" in model:
                         tokens_per_message = 3
                         tokens_per_name = 1
+                    case "davinci-002" | "babbage-002":
+                        return self.encoding.encode(' '.join(turn.content for turn in as_list(input)))
                 num_tokens = 0
                 for message in input:
                     num_tokens += tokens_per_message
@@ -223,6 +238,10 @@ class OpenAIModel(EndpointModel):
                             num_tokens += tokens_per_name
                 num_tokens += 3
                 return num_tokens
+
+        def apply_chat_template(self, input: ChatCompletionInputMessage|Conversation, add_special_tokens: bool = True) -> List[int]:
+            return self.encoding.encode(' '.join(turn.content for turn in as_list(input)),
+                                        allowed_special="all" if add_special_tokens else set())
 
         @property
         def eos_token_id(self):

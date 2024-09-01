@@ -128,8 +128,6 @@ class EndpointModel(LightevalModel):
                 context = request.context + request.choice
             else:
                 context = request.context + [ChatCompletionInputMessage(role="assistant", content=request.choice)]
-            if not isinstance(context, str):
-                context = self.tokenizer.apply_chat_template(context, tokenize=False)
 
         if isinstance(context, str):
             prepared_request = TextGenerationInput(
