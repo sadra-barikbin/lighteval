@@ -120,10 +120,10 @@ class TestEndpointModel:
         ]
         task_config = LightevalTaskConfig(
             name="test",
-            prompt_function=lambda _: _,
+            prompt_function="arc",
             hf_repo="",
             hf_subset="",
-            metric=[Metrics.loglikelihood_acc, Metrics.exact_match, Metrics.byte_perplexity],
+            metric=["loglikelihood_acc", "exact_match", "byte_perplexity"],
             generation_size=5,
             stop_sequence=[],
         )
