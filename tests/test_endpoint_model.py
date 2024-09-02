@@ -50,20 +50,24 @@ CACHE_PATH = os.getenv("HF_HOME", ".")
 @pytest.fixture(scope="module")
 def tgi_model() -> Iterator[TGIModel]:
     client = docker.from_env()
-    port = random.randint(8000, 9000)
-    container = client.containers.run(
-        "ghcr.io/huggingface/text-generation-inference:2.2.0",
-        command=[
-            "--model-id",
-            "hf-internal-testing/tiny-random-LlamaForCausalLM",
-            "--dtype",
-            "float16",
-        ],
-        detach=True,
-        name="lighteval-tgi-model-test",
-        auto_remove=True,
-        ports={"80/tcp": port},
-    )
+    try:
+        container = client.containers.get("lighteval-tgi-model-test")
+        port = container.ports["80/tcp"][0]["HostPort"]
+    except docker.errors.NotFound:
+        port = random.randint(8000, 9000)
+        container = client.containers.run(
+            "ghcr.io/huggingface/text-generation-inference:2.2.0",
+            command=[
+                "--model-id",
+                "hf-internal-testing/tiny-random-LlamaForCausalLM",
+                "--dtype",
+                "float16",
+            ],
+            detach=True,
+            name="lighteval-tgi-model-test",
+            auto_remove=False,
+            ports={"80/tcp": port},
+        )
     address = f"http://localhost:{port}"
     for _ in range(30):
         try:
@@ -77,6 +81,7 @@ def tgi_model() -> Iterator[TGIModel]:
     yield model
     container.stop()
     container.wait()
+    container.remove()
     model.cleanup()
 
 
@@ -87,25 +92,25 @@ class TestEndpointModel:
     @pytest.fixture
     def task(self) -> LightevalTask:
         eval_docs = [
-            Doc(query="How are you?", choices=["Fine, thanks!", "Not bad!"], instruction="Tell me:\n\n", gold_index=0),
+            Doc(query="Tell me:\n\nHow are you?", choices=["Fine, thanks!", "Not bad!"], instruction="Tell me:\n\n", gold_index=0),
             Doc(
-                query="Comment vas-tu?",
+                query="Tell me:\n\nComment vas-tu?",
                 choices=["Ca va! Merci!", "Comme ci, comme ça"],
                 instruction="Tell me:\n\n",
                 gold_index=0,
             ),
         ]
         fewshot_docs = [
-            Doc(query="كيف حالك؟", choices=["جيد شكراً!", "ليس سيئًا!"], instruction="Tell me:\n\n", gold_index=0),
+            Doc(query="Tell me:\n\nكيف حالك؟", choices=["جيد شكراً!", "ليس سيئًا!"], instruction="Tell me:\n\n", gold_index=0),
             Doc(
-                query="Wie geht es dir?",
+                query="Tell me:\n\nWie geht es dir?",
                 choices=["Gut, danke!", "Nicht schlecht!"],
                 instruction="Tell me:\n\n",
                 gold_index=0,
             ),
         ]
         task_config = LightevalTaskConfig(
-            "test", lambda _: _, "", "", [Metrics.loglikelihood_acc, Metrics.exact_match, Metrics.byte_perplexity]
+            "test", "arc", "", "", ["loglikelihood_acc", "exact_match", "byte_perplexity"]
         )
         task = LightevalTask("test", task_config)
         task._docs = eval_docs
@@ -163,6 +168,7 @@ class TestEndpointModel:
             max_samples=1,
             evaluation_tracker=evaluation_tracker,
             use_chat_template=use_chat_template,
+            system_prompt=None
         )
 
         evaluation_tracker = evaluate(

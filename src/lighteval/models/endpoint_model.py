@@ -255,7 +255,7 @@ class InferenceEndpointModel(LightevalModel):
             elif isinstance(request.context, str):
                 context = request.context + request.choice
             else:
-                context = request.context + ChatCompletionInputMessage(role="assistant", content=request.choice)
+                context = request.context + [ChatCompletionInputMessage(role="assistant", content=request.choice)]
             if not isinstance(context, str):
                 context = self.tokenizer.apply_chat_template(context, add_generation_prompt=True, tokenize=False)
 

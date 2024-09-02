@@ -60,14 +60,12 @@ class Request:
         example_index (int): The index of the example.
         request_index (int): The index of the request.
         context (Context): The context for the request.
-        metric_categories (list[MetricCategory]): All the metric categories which concern this request
     """
 
     task_name: str
     example_index: int
     request_index: int
     context: Context
-    metric_categories: list["MetricCategory"]  # noqa F821
 
 
 @dataclass
