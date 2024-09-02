@@ -38,7 +38,7 @@ from lighteval.models.model_config import (
     TGIModelConfig,
 )
 from lighteval.models.tgi_model import ModelClient
-from lighteval.utils import NO_TGI_ERROR_MSG, is_accelerate_available, is_tgi_available
+from lighteval.utils import NO_TGI_ERROR_MSG, is_accelerate_available
 
 
 if is_accelerate_available():
@@ -84,14 +84,12 @@ def load_model(  # noqa: C901
 
 
 def load_model_with_tgi(config: TGIModelConfig):
-    if not is_tgi_available():
-        raise ImportError(NO_TGI_ERROR_MSG)
 
     hlog(f"Load model from inference server: {config.inference_server_address}")
     model = ModelClient(address=config.inference_server_address, auth_token=config.inference_server_auth)
     model_name = str(model.model_info["model_id"])
     model_sha = model.model_info["model_sha"]
-    model_precision = model.model_info["model_dtype"]
+    model_precision = model.model_info["model_dtype"] if "model_dtype" in model.model_info else "default"
     model_size = -1
     model_info = ModelInfo(
         model_name=model_name,
