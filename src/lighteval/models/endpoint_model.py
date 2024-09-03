@@ -201,7 +201,7 @@ class InferenceEndpointModel(LightevalModel):
         self, response: TextGenerationOutput, request: LoglikelihoodRequest | LoglikelihoodRollingRequest
     ) -> LoglikelihoodReturn:
         len_choice = len(request.tokenized_continuation)
-        logits = sum([t.logprob for t in response.details.prefill[1:][-len_choice:]])
+        logits = sum([t.logprob for t in response.details.prefill[1:][-len_choice-1:]])
         return LoglikelihoodReturn(
             result=(logits, True) if isinstance(request, LoglikelihoodRequest) else logits,
             input_tokens=[t.id for t in response.details.prefill[:-len_choice]],
@@ -333,7 +333,6 @@ class InferenceEndpointModel(LightevalModel):
         for request in requests:
             request.tokenized_context = self.tok_encode(request.context)
             request.tokenized_continuation = self.tok_encode(request.choice)
-        print(len(requests))
         dataset = LoglikelihoodDataset(requests=requests, dataset_splits=self.DATASET_SPLITS)
         batch_size = override_bs if override_bs is not None else BATCH_SIZE
         results: List[str] = []
