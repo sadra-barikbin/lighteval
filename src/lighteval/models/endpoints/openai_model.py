@@ -21,8 +21,9 @@
 # SOFTWARE.
 
 from typing import Coroutine, List, Optional, cast
+from dataclasses import asdict
 
-from huggingface_hub import TextGenerationInput, ChatCompletionInputMessage
+from huggingface_hub import ChatCompletionInput, ChatCompletionInputMessage
 
 from lighteval.models.endpoints.endpoint_model import EndpointInput, EndpointModel, EndpointOutput, OpenAIOutput
 from lighteval.models.abstract_model import ModelInfo
@@ -46,9 +47,6 @@ if is_openai_available():
     from tiktoken import Encoding
 
 
-SOMEWHAT_OPEN_OPENAI_MODELS = ["davinci-002", "babbage-002"]
-
-
 class OpenAIModel(EndpointModel):
     _DEFAULT_MAX_LENGTH = 2048
 
@@ -68,116 +66,40 @@ class OpenAIModel(EndpointModel):
     def _process_request(
         self, prepared_request: EndpointInput, request: Request
     ) -> Coroutine[None, None, OpenAIOutput] | OpenAIOutput:
+        assert isinstance(prepared_request, ChatCompletionInput)
         client = self.async_client if self.use_async else self.client
-        if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
-            logprobs = 1
-        else:
-            logprobs = NOT_GIVEN
-
-        if isinstance(prepared_request, TextGenerationInput):
-            return client.completions.create(
-                prompt=prepared_request.inputs,
-                stop=prepared_request.parameters.stop or NOT_GIVEN,
-                logprobs=logprobs,
-                max_tokens=prepared_request.parameters.max_new_tokens or NOT_GIVEN,
-                model=self.name,
-                temperature=prepared_request.parameters.temperature,
-                echo=True,
-                seed=42,
-            )
-        else:
-            return client.chat.completions.create(
-                messages=prepared_request.messages,
-                stop=prepared_request.stop,
-                model=self.name,
-                max_tokens=prepared_request.max_tokens,
-                temperature=prepared_request.temperature,
-                tool_choice=prepared_request.tool_choice,
-                tools=prepared_request.tools,
-            )
+        prepared_request_dict = asdict(prepared_request)
+        del prepared_request_dict['tool_prompt']
+        return client.chat.completions.create(**prepared_request_dict)
 
     def _process_generate_response(self, response: EndpointOutput, request: GreedyUntilRequest) -> GenerativeResponse:
-        if isinstance(response, Completion):
-            completion = response.choices[0]
-            prompt_length = response.usage.prompt_tokens
-            returns_logits = request.use_logits
-
-            if self.name in SOMEWHAT_OPEN_OPENAI_MODELS:
-                input_tokens = [
-                    self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[:prompt_length]
-                ]
-                generated_tokens = [
-                    self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[prompt_length:]
-                ]
-                logits = completion.logprobs.token_logprobs[1:] if returns_logits else None
-            else:
-                input_tokens = generated_tokens = logits = None
-
-            return GenerativeResponse(
-                result=completion.text,
-                input_tokens=input_tokens,
-                generated_tokens=generated_tokens,
-                logits=logits,
-                truncated_tokens_count=-1,
-                padded_tokens_count=-1,
-            )
-        else:
-            response = cast(ChatCompletion, response)
-            return GenerativeResponse(
-                result=response.choices[0].message.content,
-                truncated_tokens_count=-1,
-                padded_tokens_count=-1,
-            )
-
-    def _process_logprob_response(
-        self, response: Completion, request: LoglikelihoodRequest | LoglikelihoodRollingRequest
-    ) -> LoglikelihoodResponse:
-        completion = response.choices[0]
-
-        len_choice = len(request.tokenized_continuation)
-        print(completion)
-        logits = completion.logprobs.token_logprobs[-len_choice - 1 : -1]
-        greedy_tokens = list(list(zip(*completion.logprobs.top_logprobs[-len_choice - 1 : -1]))[0])
-        max_equal = greedy_tokens == completion.logprobs.tokens[-len_choice - 1 : -1]
-        prompt_length = len(request.tokenized_context)
-        return LoglikelihoodResponse(
-            result=(sum(logits), max_equal),
-            input_tokens=[self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[:prompt_length]],
-            generated_tokens=[
-                self.tokenizer.convert_token_to_id(t) for t in completion.logprobs.tokens[prompt_length:-1]
-            ],
+        response = cast(ChatCompletion, response)
+        return GenerativeResponse(
+            result=response.choices[0].message.content,
+            logits= [t.logprob for t in response.choices[0].logprobs.content],
+            generated_tokens=[t.token for t in response.choices[0].logprobs.content],
             truncated_tokens_count=-1,
             padded_tokens_count=-1,
         )
 
-    def greedy_until(
-        self,
-        requests: List[GreedyUntilRequest],
-        override_bs: Optional[int] = None,
-    ) -> List[GenerativeResponse]:
-        if self.name not in SOMEWHAT_OPEN_OPENAI_MODELS and any(req.use_logits for req in requests):
-            raise ValueError(
-                "OpenAI models could not process requests with `use_logits=True` except the models 'davinci-002' and 'babbage-002'."
-            )
-        return super(OpenAIModel, self).greedy_until(requests, override_bs)
+    def _process_logprob_response(
+        self, response: Completion, request: LoglikelihoodRequest | LoglikelihoodRollingRequest
+    ) -> LoglikelihoodResponse:
+        pass
 
     def loglikelihood(
         self, requests: list[LoglikelihoodRequest], override_bs: Optional[int] = None
     ) -> list[LoglikelihoodResponse]:
-        if self.name not in SOMEWHAT_OPEN_OPENAI_MODELS:
-            raise ValueError(
-                "OpenAI models could not be evaluated by non-generative metrics except the models 'davinci-002' and 'babbage-002'."
-            )
-        return super(OpenAIModel, self).loglikelihood(requests, override_bs)
+        raise ValueError(
+            "OpenAI models could not be evaluated by non-generative metrics."
+        )
 
     def loglikelihood_rolling(
         self, requests: list[LoglikelihoodRollingRequest], override_bs: Optional[int] = None
     ) -> list[LoglikelihoodResponse]:
-        if self.name not in SOMEWHAT_OPEN_OPENAI_MODELS:
-            raise ValueError(
-                "OpenAI models could not be evaluated by non-generative metrics except the models 'davinci-002' and 'babbage-002'."
-            )
-        return super(OpenAIModel, self).loglikelihood_rolling(requests, override_bs)
+        raise ValueError(
+            "OpenAI models could not be evaluated by non-generative metrics."
+        )
 
     @property
     def add_special_tokens(self):
@@ -213,8 +135,6 @@ class OpenAIModel(EndpointModel):
                     case (
                         "gpt-3.5-turbo-0613"
                         | "gpt-3.5-turbo-16k-0613"
-                        | "gpt-4-0314"
-                        | "gpt-4-32k-0314"
                         | "gpt-4-0613"
                         | "gpt-4-32k-0613"
                     ):
@@ -226,8 +146,6 @@ class OpenAIModel(EndpointModel):
                     case model if "gpt-3.5-turbo" in model or "gpt-4" in model:
                         tokens_per_message = 3
                         tokens_per_name = 1
-                    case "davinci-002" | "babbage-002":
-                        return self.encoding.encode(' '.join(turn.content for turn in as_list(input)))
                 num_tokens = 0
                 for message in input:
                     num_tokens += tokens_per_message
