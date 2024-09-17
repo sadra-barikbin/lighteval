@@ -24,7 +24,7 @@ import requests
 from huggingface_hub import AsyncInferenceClient, InferenceClient
 from transformers import AutoTokenizer
 
-from lighteval.models.endpoint_model import InferenceEndpointModel
+from lighteval.models.endpoints.inference_endpoint_model import InferenceEndpointModel
 
 
 BATCH_SIZE = 50

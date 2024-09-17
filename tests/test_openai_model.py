@@ -20,73 +20,31 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import os
-import random
-import time
 from collections import defaultdict
-from typing import Iterator, TypeAlias
+from typing import TypeAlias
 
-import docker
 import pytest
-import requests
 from huggingface_hub import ChatCompletionInputMessage
 
+from lighteval.logging.evaluation_tracker import EvaluationTracker
+from lighteval.metrics.metrics import Metrics
+from lighteval.models.endpoints import OpenAIModel
 from lighteval.evaluator import EvaluationTracker, evaluate
-from lighteval.models.endpoints.tgi_model import ModelClient as TGIModel
 from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig, create_requests_from_tasks
-from lighteval.tasks.requests import (
-    Doc,
-    Request,
-    RequestType,
-)
+from lighteval.tasks.requests import Doc, GreedyUntilRequest, Request, RequestType
 
 
-TOKEN = os.environ.get("HF_TOKEN")
-CACHE_PATH = os.getenv("HF_HOME", ".")
-
-
-@pytest.fixture(scope="module")
-def tgi_model() -> Iterator[TGIModel]:
-    client = docker.from_env()
-    try:
-        container = client.containers.get("lighteval-tgi-model-test")
-        port = container.ports["80/tcp"][0]["HostPort"]
-    except docker.errors.NotFound:
-        port = random.randint(8000, 9000)
-        container = client.containers.run(
-            "ghcr.io/huggingface/text-generation-inference:2.2.0",
-            command=[
-                "--model-id",
-                "hf-internal-testing/tiny-random-LlamaForCausalLM",
-                "--dtype",
-                "float16",
-            ],
-            detach=True,
-            name="lighteval-tgi-model-test",
-            auto_remove=False,
-            ports={"80/tcp": port},
-        )
-    address = f"http://localhost:{port}"
-    for _ in range(30):
-        try:
-            if requests.get(f"{address}/health"):
-                break
-        except Exception:
-            time.sleep(1)
-    else:
-        raise RuntimeError("Couldn't setup TGI server.")
-    model = TGIModel(address)
+@pytest.fixture(scope="module", params=['gpt-4', "gpt-3.5-turbo-0613"])
+def openai_model(request):
+    model = OpenAIModel(request.param)
     yield model
-    container.stop()
-    container.wait()
-    container.remove()
     model.cleanup()
 
 
 RequestDict: TypeAlias = dict[RequestType, list[Request]]
 
 
-class TestEndpointModel:
+class TestOpenAIModel:
     @pytest.fixture
     def task(self) -> LightevalTask:
         eval_docs = [
@@ -119,10 +77,10 @@ class TestEndpointModel:
         ]
         task_config = LightevalTaskConfig(
             name="test",
-            prompt_function="arc",
+            prompt_function=lambda _: _,
             hf_repo="",
             hf_subset="",
-            metric=["loglikelihood_acc", "exact_match", "byte_perplexity"],
+            metric=[Metrics.loglikelihood_acc, Metrics.exact_match, Metrics.byte_perplexity],
             generation_size=5,
             stop_sequence=[],
         )
@@ -135,32 +93,38 @@ class TestEndpointModel:
     def zero_shot_request_dict(self, task: LightevalTask) -> RequestDict:
         result = defaultdict(list)
         for i, doc in enumerate(task.eval_docs()):
-            if i % 2 == 0:
-                context = [ChatCompletionInputMessage(role="user", content=doc.query)]
-            else:
-                context = doc.query
+            context = [ChatCompletionInputMessage(role="user", content=doc.query)]
             doc_result = task.construct_requests(doc, context, f"{i}_0", "custom|test|0")
             for req_type in doc_result:
                 result[req_type].extend(doc_result[req_type])
         return result
 
-    def test_greedy_until(self, zero_shot_request_dict: RequestDict, tgi_model: TGIModel):
-        returns = tgi_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
+    def test_greedy_until(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
+        returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
         assert len(returns) == 2
         assert all(r.result is not None for r in returns)
+        requests = [
+            GreedyUntilRequest(
+                "test_task", 0, 0,
+                [ChatCompletionInputMessage(role="user",content="How many ears does human have?")],
+                [], [], 5, num_samples=1, use_logits=True
+            )
+        ]
+        response = openai_model.greedy_until(requests)[0]
+        assert response.generated_tokens is not None
+        assert response.result is not None
+        assert response.logits is not None
 
-    def test_loglikelihood(self, zero_shot_request_dict: RequestDict, tgi_model: TGIModel):
-        returns = tgi_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
-        assert len(returns) == 4
-        assert all(r.result is not None for r in returns)
-
-        returns = tgi_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
-        assert len(returns) == 2
-        assert all(r.result is not None for r in returns)
+    def test_loglikelihood(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
+        with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+            openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
+        
+        with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+            openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
 
     @pytest.mark.parametrize("num_fewshot", [0, 2])
-    @pytest.mark.parametrize("use_chat_template", [False, True])
-    def test_integration(self, task: LightevalTask, tgi_model: TGIModel, num_fewshot: int, use_chat_template: bool):
+    def test_integration(
+        self, task: LightevalTask, openai_model: OpenAIModel, num_fewshot: int):
         evaluation_tracker = EvaluationTracker()
         task_dict = {"custom|test": task}
         evaluation_tracker.task_config_logger.log(task_dict)
@@ -168,15 +132,15 @@ class TestEndpointModel:
             task_dict=task_dict,
             fewshot_dict={"custom|test": [(num_fewshot, False)]},
             num_fewshot_seeds=0,
-            lm=tgi_model,
+            lm=openai_model,
             max_samples=1,
             evaluation_tracker=evaluation_tracker,
-            use_chat_template=use_chat_template,
+            use_chat_template=True,
             system_prompt=None,
         )
 
         evaluation_tracker = evaluate(
-            lm=tgi_model,
+            lm=openai_model,
             requests_dict=requests_dict,
             docs=docs,
             task_dict=task_dict,

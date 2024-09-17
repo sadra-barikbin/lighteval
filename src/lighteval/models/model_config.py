@@ -22,7 +22,7 @@
 
 from argparse import Namespace
 from dataclasses import dataclass
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, Literal
 
 import torch
 import yaml
@@ -200,6 +200,13 @@ class AdapterModelConfig(BaseModelConfig):
 class TGIModelConfig:
     inference_server_address: str
     inference_server_auth: str
+    model_id: str
+
+
+@dataclass
+class EndpointConfig:
+    type: Literal["openai", "anthropic"]
+    model_id: str
 
 
 @dataclass
@@ -279,6 +286,13 @@ def create_model_config(args: Namespace, accelerator: Union["Accelerator", None]
         return TGIModelConfig(
             inference_server_address=config["instance"]["inference_server_address"],
             inference_server_auth=config["instance"]["inference_server_auth"],
+            model_id=config["instance"]["model_id"],
+        )
+    
+    if config["type"] in ("anthropic", "openai"):
+        return EndpointConfig(
+            type=config["type"],
+            model_id=config["instance"]["model_id"],
         )
 
     if config["type"] == "endpoint":

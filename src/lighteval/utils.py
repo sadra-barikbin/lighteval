@@ -200,3 +200,14 @@ def can_load_extended_tasks() -> bool:
 
 
 CANNOT_USE_EXTENDED_TASKS_MSG = "If you want to use extended_tasks, make sure you installed their dependencies using `pip install -e .[extended_tasks]`."
+
+
+def is_openai_available() -> bool:
+    return importlib.util.find_spec("openai") is not None
+
+
+NO_OPENAI_ERROR_MSG = "You are trying to use an Open AI LLM as a judge, for which you need `openai`, which is not available in your environment. Please install it using pip."
+
+
+def is_anthropic_available() -> bool:
+    return importlib.util.find_spec("anthropic") is not None

@@ -27,7 +27,8 @@ from lighteval.logging.hierarchical_logger import hlog
 from lighteval.models.adapter_model import AdapterModel
 from lighteval.models.base_model import BaseModel
 from lighteval.models.delta_model import DeltaModel
-from lighteval.models.endpoint_model import InferenceEndpointModel
+from lighteval.models.endpoints import AnthropicModel, OpenAIModel, EndpointModel
+from lighteval.models.endpoints.inference_endpoint_model import InferenceEndpointModel
 from lighteval.models.model_config import (
     AdapterModelConfig,
     BaseModelConfig,
@@ -36,9 +37,10 @@ from lighteval.models.model_config import (
     InferenceEndpointModelConfig,
     InferenceModelConfig,
     TGIModelConfig,
+    EndpointConfig
 )
-from lighteval.models.tgi_model import ModelClient
-from lighteval.utils import NO_TGI_ERROR_MSG, is_accelerate_available
+from lighteval.models.endpoints.tgi_model import ModelClient
+from lighteval.utils import is_accelerate_available
 
 
 if is_accelerate_available():
@@ -75,6 +77,9 @@ def load_model(  # noqa: C901
     # Inference server loading
     if isinstance(config, TGIModelConfig):
         return load_model_with_tgi(config)
+    
+    if isinstance(config, EndpointConfig):
+        return load_3rd_party_endpoint_model(config)
 
     if isinstance(config, InferenceEndpointModelConfig) or isinstance(config, InferenceModelConfig):
         return load_model_with_inference_endpoints(config, env_config=env_config)
@@ -98,6 +103,14 @@ def load_model_with_tgi(config: TGIModelConfig):
         model_size=model_size,
     )
     return model, model_info
+
+
+def load_3rd_party_endpoint_model(config: EndpointConfig) -> EndpointModel:
+    match config.type:
+        case "anthropic":
+            return AnthropicModel(config.model_id)
+        case "openai":
+            return OpenAIModel(config.model_id)
 
 
 def load_model_with_inference_endpoints(config: Union[InferenceEndpointModelConfig, InferenceModelConfig], env_config: EnvConfig):
