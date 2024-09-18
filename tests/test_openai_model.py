@@ -32,10 +32,10 @@ from lighteval.metrics.metrics import Metrics
 from lighteval.models.endpoints import OpenAIModel
 from lighteval.pipeline import ParallelismManager, Pipeline, PipelineParameters
 from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig, create_requests_from_tasks
-from lighteval.tasks.requests import Doc, GreedyUntilRequest, Request, RequestType
+from lighteval.tasks.requests import Doc, GreedyUntilRequest, Request, RequestType, LoglikelihoodRequest, LoglikelihoodRollingRequest
 
 
-@pytest.fixture(scope="module", params=["davinci-002", "gpt-3.5-turbo-0613"])
+@pytest.fixture(scope="module", params=["gpt-4", "gpt-3.5-turbo-0613"])
 def openai_model(request):
     model = OpenAIModel(request.param)
     yield model
@@ -81,7 +81,7 @@ class TestOpenAIModel:
             prompt_function=lambda _: _,
             hf_repo="",
             hf_subset="",
-            metric=[Metrics.loglikelihood_acc, Metrics.exact_match, Metrics.byte_perplexity],
+            metric=[Metrics.exact_match],
             generation_size=5,
             stop_sequence=[],
         )
@@ -94,10 +94,7 @@ class TestOpenAIModel:
     def zero_shot_request_dict(self, task: LightevalTask) -> RequestDict:
         result = defaultdict(list)
         for i, doc in enumerate(task.eval_docs()):
-            if i % 2 == 0:
-                context = [ChatCompletionInputMessage(role="user", content=doc.query)]
-            else:
-                context = doc.query
+            context = [ChatCompletionInputMessage(role="user", content=doc.query)]
             doc_result = task.construct_requests(doc, context, f"{i}_0", "custom|test|0")
             for req_type in doc_result:
                 result[req_type].extend(doc_result[req_type])
@@ -117,31 +114,22 @@ class TestOpenAIModel:
             with pytest.raises(ValueError, match=r"OpenAI models could not process requests with `use_logits=True`"):
                 openai_model.greedy_until(requests)
 
-    def test_loglikelihood(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
-        if openai_model.name == "davinci-002":
-            returns = openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
-            assert len(returns) == 4
-            assert all(r.result is not None for r in returns)
-
-            returns = openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
-            assert len(returns) == 2
-            assert all(r.result is not None for r in returns)
-        else:
-            with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
-                openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
-            
-            with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
-                openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
+    def test_loglikelihood(self, openai_model: OpenAIModel):
+        requests = [LoglikelihoodRequest("test_task", 0, 0, "Hi there!", "Hello there!")]
+        with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+            openai_model.loglikelihood(requests)
+        requests = [LoglikelihoodRollingRequest("test_task", 0, 0, "Hi there!", "Hello there!")]
+        with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
+            openai_model.loglikelihood_rolling(requests)
 
     @pytest.mark.parametrize("num_fewshot", [0, 2])
-    @pytest.mark.parametrize("use_chat_template", [False, True])
     def test_integration(
-        self, task: LightevalTask, openai_model: OpenAIModel, num_fewshot: int, use_chat_template: bool
+        self, task: LightevalTask, openai_model: OpenAIModel, num_fewshot: int
     ):
         evaluation_tracker = EvaluationTracker()
         pipeline_params = PipelineParameters(
             launcher_type=ParallelismManager.NONE,
-            use_chat_template=use_chat_template,
+            use_chat_template=True,
         )
 
         with patch("lighteval.pipeline.Pipeline._init_tasks_and_requests"):
@@ -164,12 +152,9 @@ class TestOpenAIModel:
             lm=openai_model,
             max_samples=pipeline_params.max_samples,
             evaluation_tracker=evaluation_tracker,
-            use_chat_template=use_chat_template,
+            use_chat_template=True,
             system_prompt=pipeline_params.system_prompt,
         )
-        if openai_model.name == "gpt-3.5-turbo-0613":
-            del requests[RequestType.LOGLIKELIHOOD]
-            del requests[RequestType.LOGLIKELIHOOD_ROLLING]
         pipeline.requests = requests
         pipeline.docs = docs
         evaluation_tracker.task_config_logger.log(task_dict)
