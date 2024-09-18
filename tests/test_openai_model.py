@@ -101,18 +101,20 @@ class TestOpenAIModel:
         return result
 
     def test_greedy_until(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
-        if openai_model.name == "davinci-002":
-            returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
-            assert len(returns) == 2
-            assert all(r.result is not None for r in returns)
-        else:
-            requests = [
-                GreedyUntilRequest(
-                    "test_task", 0, 0, "How many ears does human have?", [], [], 5, num_samples=1, use_logits=True
-                )
-            ]
-            with pytest.raises(ValueError, match=r"OpenAI models could not process requests with `use_logits=True`"):
-                openai_model.greedy_until(requests)
+        returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
+        assert len(returns) == 2
+        assert all(r.result is not None for r in returns)
+        requests = [
+            GreedyUntilRequest(
+                "test_task", 0, 0,
+                [ChatCompletionInputMessage(role="user",content="How many ears does human have?")],
+                [], [], 5, num_samples=1, use_logits=True
+            )
+        ]
+        response = openai_model.greedy_until(requests)[0]
+        assert response.generated_tokens is not None
+        assert response.result is not None
+        assert response.logits is not None
 
     def test_loglikelihood(self, openai_model: OpenAIModel):
         requests = [LoglikelihoodRequest("test_task", 0, 0, "Hi there!", "Hello there!")]
