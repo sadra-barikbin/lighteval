@@ -20,11 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from dataclasses import dataclass
-from typing import Optional, Tuple, Union
+from typing import Tuple, Union
 
 from lighteval.logging.hierarchical_logger import hlog
 from lighteval.models.adapter_model import AdapterModel
+from lighteval.models.abstract_model import ModelInfo
 from lighteval.models.base_model import BaseModel
 from lighteval.models.delta_model import DeltaModel
 from lighteval.models.endpoints import AnthropicModel, OpenAIModel, EndpointModel
@@ -45,14 +45,6 @@ from lighteval.utils import is_accelerate_available
 
 if is_accelerate_available():
     from accelerate.utils import calculate_maximum_sizes, convert_bytes
-
-
-@dataclass
-class ModelInfo:
-    model_name: str
-    model_sha: Optional[str] = None
-    model_dtype: Optional[str] = None
-    model_size: Optional[str] = None
 
 
 def load_model(  # noqa: C901

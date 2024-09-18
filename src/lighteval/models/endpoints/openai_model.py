@@ -26,7 +26,7 @@ from dataclasses import asdict
 from huggingface_hub import ChatCompletionInput, ChatCompletionInputMessage
 
 from lighteval.models.endpoints.endpoint_model import EndpointInput, EndpointModel, EndpointOutput, OpenAIOutput
-from lighteval.models.model_loader import ModelInfo
+from lighteval.models.abstract_model import ModelInfo
 from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn
 from lighteval.tasks.requests import (
     Conversation,

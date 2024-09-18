@@ -31,7 +31,7 @@ from lighteval.evaluator import evaluate, make_results_table
 from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.logging.hierarchical_logger import hlog, htrack, htrack_block
 from lighteval.models.model_config import EnvConfig
-from lighteval.models.model_loader import ModelInfo
+from lighteval.models.abstract_model import ModelInfo
 from lighteval.models.nanotron_model import NanotronLightevalModel
 from lighteval.tasks.lighteval_task import LightevalTask, create_requests_from_tasks
 from lighteval.tasks.registry import Registry, get_custom_tasks, taskinfo_selector

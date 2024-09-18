@@ -27,11 +27,17 @@ import pytest
 from huggingface_hub import ChatCompletionInputMessage
 
 from lighteval.logging.evaluation_tracker import EvaluationTracker
-from lighteval.metrics.metrics import Metrics
 from lighteval.models.endpoints import OpenAIModel
 from lighteval.evaluator import EvaluationTracker, evaluate
 from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig, create_requests_from_tasks
-from lighteval.tasks.requests import Doc, GreedyUntilRequest, Request, RequestType
+from lighteval.tasks.requests import (
+    Doc,
+    GreedyUntilRequest,
+    Request,
+    RequestType,
+    LoglikelihoodRequest,
+    LoglikelihoodRollingRequest,
+)
 
 
 @pytest.fixture(scope="module", params=['gpt-4', "gpt-3.5-turbo-0613"])
@@ -77,10 +83,10 @@ class TestOpenAIModel:
         ]
         task_config = LightevalTaskConfig(
             name="test",
-            prompt_function=lambda _: _,
+            prompt_function="arc",
             hf_repo="",
             hf_subset="",
-            metric=[Metrics.loglikelihood_acc, Metrics.exact_match, Metrics.byte_perplexity],
+            metric=["exact_match"],
             generation_size=5,
             stop_sequence=[],
         )
@@ -115,12 +121,13 @@ class TestOpenAIModel:
         assert response.result is not None
         assert response.logits is not None
 
-    def test_loglikelihood(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
+    def test_loglikelihood(self, openai_model: OpenAIModel):
+        requests = [LoglikelihoodRequest("test_task", 0, 0, "Hi there!", "Hello there!")]
         with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
-            openai_model.loglikelihood(zero_shot_request_dict[RequestType.LOGLIKELIHOOD])
-        
+            openai_model.loglikelihood(requests)
+        requests = [LoglikelihoodRollingRequest("test_task", 0, 0, "Hi there!", "Hello there!")]
         with pytest.raises(ValueError, match=r"OpenAI models could not be evaluated by non-generative metrics"):
-            openai_model.loglikelihood_rolling(zero_shot_request_dict[RequestType.LOGLIKELIHOOD_ROLLING])
+            openai_model.loglikelihood_rolling(requests)
 
     @pytest.mark.parametrize("num_fewshot", [0, 2])
     def test_integration(
@@ -133,7 +140,7 @@ class TestOpenAIModel:
             fewshot_dict={"custom|test": [(num_fewshot, False)]},
             num_fewshot_seeds=0,
             lm=openai_model,
-            max_samples=1,
+            max_samples=None,
             evaluation_tracker=evaluation_tracker,
             use_chat_template=True,
             system_prompt=None,

@@ -20,9 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import asyncio
 from dataclasses import asdict
-from typing import Coroutine, List, Optional, TypeAlias, Union, cast
+from typing import Coroutine, TypeAlias, Union
 
 from huggingface_hub import (
     AsyncInferenceClient,
@@ -41,7 +40,7 @@ from huggingface_hub import (
 from transformers import AutoTokenizer
 
 from lighteval.logging.hierarchical_logger import hlog, hlog_err, hlog_warn
-from lighteval.models.endpoints import EndpointModel
+from lighteval.models.endpoints.endpoint_model import EndpointModel
 from lighteval.models.model_config import EnvConfig, InferenceEndpointModelConfig, InferenceModelConfig
 from lighteval.models.model_output import (
     GenerateReturn,

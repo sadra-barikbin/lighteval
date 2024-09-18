@@ -26,7 +26,7 @@ from huggingface_hub import ChatCompletionInput, TextGenerationInput
 from transformers import PreTrainedTokenizerFast
 
 from lighteval.models.endpoints.endpoint_model import AnthropicOutput, EndpointInput, EndpointModel, EndpointOutput
-from lighteval.models.model_loader import ModelInfo
+from lighteval.models.abstract_model import ModelInfo
 from lighteval.models.model_output import GenerateReturn, LoglikelihoodReturn
 from lighteval.tasks.requests import GreedyUntilRequest, LoglikelihoodRequest, LoglikelihoodRollingRequest, Request
 from lighteval.utils import is_anthropic_available
