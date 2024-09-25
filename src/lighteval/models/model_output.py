@@ -91,6 +91,10 @@ class AnswerExtractor:
     @abstractmethod
     def __call__(self, result: str):
         ...
+    
+    @abstractmethod
+    def as_dict() -> dict:
+        ...
 
 
 class RegexAnswerExtractor(AnswerExtractor):

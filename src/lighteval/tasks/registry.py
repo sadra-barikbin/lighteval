@@ -33,6 +33,7 @@ from datasets.load import dataset_module_factory
 
 from lighteval.logging.hierarchical_logger import hlog, hlog_warn
 from lighteval.tasks.extended import AVAILABLE_EXTENDED_TASKS_MODULES
+from lighteval.models.model_output import RegexAnswerExtractor
 from lighteval.tasks.lighteval_task import LightevalTask, LightevalTaskConfig
 from lighteval.utils import CANNOT_USE_EXTENDED_TASKS_MSG, can_load_extended_tasks
 
@@ -269,6 +270,10 @@ def create_config_tasks(
                 f"This evaluation is not in any known suite: {line['name']} is in {line['suite']}, not in {DEFAULT_SUITES}. Skipping."
             )
             continue
+        if "output_regex" in line:
+            if line["output_regex"]:
+                line["answer_extractor"] = RegexAnswerExtractor([line["output_regex"]])
+            del line["output_regex"]
         for suite in line["suite"]:
             if suite in DEFAULT_SUITES:
                 tasks_with_config[f"{suite}|{line['name']}"] = LightevalTaskConfig(**line)

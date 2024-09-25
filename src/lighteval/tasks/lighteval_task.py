@@ -132,7 +132,7 @@ class LightevalTaskConfig:
             "generation_size": self.generation_size,
             "generation_grammar": self.generation_grammar,
             "stop_sequence": self.stop_sequence,
-            "answer_extractor": self.answer_extractor.as_dict(),
+            "answer_extractor": self.answer_extractor.as_dict() if self.answer_extractor else None,
             "frozen": self.frozen,
             "suite": self.suite,
             "version": self.version,

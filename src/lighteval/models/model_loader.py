@@ -97,12 +97,13 @@ def load_model_with_tgi(config: TGIModelConfig):
     return model, model_info
 
 
-def load_3rd_party_endpoint_model(config: EndpointConfig) -> EndpointModel:
+def load_3rd_party_endpoint_model(config: EndpointConfig):
     match config.type:
         case "anthropic":
-            return AnthropicModel(config.model_id)
+            model = AnthropicModel(config.model_id)
         case "openai":
-            return OpenAIModel(config.model_id)
+            model = OpenAIModel(config.model_id)
+    return model, ModelInfo(config.model_id)
 
 
 def load_model_with_inference_endpoints(config: Union[InferenceEndpointModelConfig, InferenceModelConfig], env_config: EnvConfig):
