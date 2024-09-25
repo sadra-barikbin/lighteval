@@ -42,7 +42,7 @@ from lighteval.metrics import (
 )
 from lighteval.metrics.metrics import MetricCategory, Metrics
 from lighteval.models.base_model import LightevalModel
-from lighteval.models.model_output import ModelReturn
+from lighteval.models.model_output import ModelReturn, AnswerExtractor
 from lighteval.tasks.requests import (
     Context,
     Doc,
@@ -103,7 +103,7 @@ class LightevalTaskConfig:
     generation_size: Optional[int] = None
     generation_grammar : Optional[TextGenerationInputGrammarType] = None
     stop_sequence: Optional[Tuple[str]] = None
-    output_regex: Optional[str] = None
+    answer_extractor: Optional[AnswerExtractor] = None
     num_samples: Optional[list[int]] = None
 
     frozen: bool = False
@@ -132,7 +132,7 @@ class LightevalTaskConfig:
             "generation_size": self.generation_size,
             "generation_grammar": self.generation_grammar,
             "stop_sequence": self.stop_sequence,
-            "output_regex": self.output_regex,
+            "answer_extractor": self.answer_extractor.as_dict(),
             "frozen": self.frozen,
             "suite": self.suite,
             "version": self.version,
@@ -242,7 +242,7 @@ class LightevalTask:
         self.generation_size = cfg.generation_size
         self.generation_grammar = cfg.generation_grammar
         self.stop_sequence = cfg.stop_sequence
-        self.output_regex = cfg.output_regex
+        self.answer_extractor = cfg.answer_extractor
         self.must_remove_duplicate_docs = cfg.must_remove_duplicate_docs
         if self.must_remove_duplicate_docs is None:
             self.must_remove_duplicate_docs = False
@@ -588,7 +588,7 @@ class LightevalTask:
                 results=results,
                 formatted_doc=formatted_doc,
                 metrics=self.metrics,
-                output_regex=self.output_regex,
+                answer_extractor=self.answer_extractor,
                 max_num_samples=max(self.num_samples),
             )
             outputs.update(cur_outputs)

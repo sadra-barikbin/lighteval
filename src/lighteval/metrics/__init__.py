@@ -21,9 +21,10 @@
 # SOFTWARE.
 
 import re
+from typing import Optional
 
 from lighteval.metrics.metrics import MetricCategory, Metrics
-from lighteval.models.model_output import ModelReturn
+from lighteval.models.model_output import ModelReturn, AnswerExtractor
 from lighteval.tasks.requests import Doc
 from lighteval.utils import as_list
 
@@ -67,7 +68,7 @@ def apply_perplexity_metric(results: list[ModelReturn], formatted_doc: Doc, metr
 
 
 def apply_generative_metric(
-    results: list[ModelReturn], formatted_doc: Doc, metrics: list[str], output_regex=None, max_num_samples=1
+    results: list[ModelReturn], formatted_doc: Doc, metrics: list[str], answer_extractor: Optional[AnswerExtractor] = None, max_num_samples=1
 ):
     outputs = {}
 
@@ -76,8 +77,8 @@ def apply_generative_metric(
     preds = []
 
     for pred_raw in preds_raw:
-        if output_regex is not None:
-            pred = next(iter(re.findall(output_regex, pred_raw)), "")
+        if answer_extractor:
+            pred = answer_extractor(pred_raw, formatted_doc.choices)
         else:
             pred = pred_raw
         preds.append(pred)
