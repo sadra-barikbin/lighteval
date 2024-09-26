@@ -24,7 +24,7 @@ from collections import defaultdict
 from typing import TypeAlias
 
 import pytest
-from huggingface_hub import ChatCompletionInputMessage
+from huggingface_hub import ChatCompletionInputMessage, TextGenerationInputGrammarType
 
 from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.models.endpoints import OpenAIModel
@@ -40,7 +40,7 @@ from lighteval.tasks.requests import (
 )
 
 
-@pytest.fixture(scope="module", params=['gpt-4', "gpt-3.5-turbo-0613"])
+@pytest.fixture(scope="module", params=['gpt-4o-mini'])
 def openai_model(request):
     model = OpenAIModel(request.param)
     yield model
@@ -88,6 +88,7 @@ class TestOpenAIModel:
             hf_subset="",
             metric=["exact_match"],
             generation_size=5,
+            generation_grammar={"type":"json", "value": },
             stop_sequence=[],
         )
         task = LightevalTask("test", task_config)
@@ -108,18 +109,20 @@ class TestOpenAIModel:
     def test_greedy_until(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
         returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
         assert len(returns) == 2
-        assert all(r.result is not None for r in returns)
-        requests = [
-            GreedyUntilRequest(
-                "test_task", 0, 0,
-                [ChatCompletionInputMessage(role="user",content="How many ears does human have?")],
-                [], [], 5, num_samples=1, use_logits=True
-            )
-        ]
-        response = openai_model.greedy_until(requests)[0]
+        assert all(r.result and r.result.isdigit() for r in returns)
+        request = GreedyUntilRequest(
+            "test_task", 0, 0,
+            [ChatCompletionInputMessage(role="user",content="How many ears does human have?")],
+            [], 5, num_samples=1, use_logits=True
+        )
+        response = openai_model.greedy_until([request])[0]
         assert response.generated_tokens is not None
         assert response.result is not None
         assert response.logits is not None
+
+        request.generation_grammar = TextGenerationInputGrammarType(type="regex", value=r"\d+")
+        with pytest.raises(ValueError, match="OpenAI models don't support structured generation with regex"):
+            openai_model.greedy_until([request])
 
     def test_loglikelihood(self, openai_model: OpenAIModel):
         requests = [LoglikelihoodRequest("test_task", 0, 0, "Hi there!", "Hello there!")]

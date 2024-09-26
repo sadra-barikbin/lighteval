@@ -43,6 +43,7 @@ if is_openai_available():
     import tiktoken
     from openai import NOT_GIVEN
     from openai.types import Completion
+    from openai.types.shared_params.response_format_json_schema import JSONSchema
     from openai.types.chat import ChatCompletion
     from tiktoken import Encoding
 
@@ -62,14 +63,38 @@ class OpenAIModel(EndpointModel):
     @property
     def tokenizer(self):
         return self._tokenizer
+    
+    def greedy_until(
+        self,
+        requests: List[GreedyUntilRequest],
+        override_bs: Optional[int] = None,
+    ) -> List[GenerateReturn]:
+        if any(req.generation_grammar and req.generation_grammar.type == "regex" for req in requests):
+            raise ValueError("OpenAI models don't support structured generation with regex patterns.")
+        return super(self, OpenAIModel).greedy_until(requests, override_bs)
 
     def _process_request(
         self, prepared_request: EndpointInput, request: Request
     ) -> Coroutine[None, None, OpenAIOutput] | OpenAIOutput:
         assert isinstance(prepared_request, ChatCompletionInput)
         client = self.async_client if self.use_async else self.client
+
         prepared_request_dict = asdict(prepared_request)
         del prepared_request_dict['tool_prompt']
+
+        if prepared_request["response_format"]:
+            if not prepared_request["response_format"]["value"]:
+                prepared_request["response_format"]["type"] = "json_object"
+                del prepared_request["response_format"]["value"]
+            else:
+                prepared_request["response_format"]["type"] = "json_schema"
+                prepared_request["response_format"]["json_schema"] = JSONSchema(
+                    name=prepared_request["response_format"]["value"]["title"],
+                    schema=prepared_request["response_format"]["value"],
+                    strict=True
+                )
+                del prepared_request["response_format"]["value"]
+
         return client.chat.completions.create(**prepared_request_dict)
 
     def _process_generate_response(self, response: EndpointOutput, request: GreedyUntilRequest) -> GenerateReturn:
