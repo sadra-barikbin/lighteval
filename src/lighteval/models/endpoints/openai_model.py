@@ -71,7 +71,7 @@ class OpenAIModel(EndpointModel):
     ) -> List[GenerateReturn]:
         if any(req.generation_grammar and req.generation_grammar.type == "regex" for req in requests):
             raise ValueError("OpenAI models don't support structured generation with regex patterns.")
-        return super(self, OpenAIModel).greedy_until(requests, override_bs)
+        return super(OpenAIModel, self).greedy_until(requests, override_bs)
 
     def _process_request(
         self, prepared_request: EndpointInput, request: Request
@@ -82,18 +82,19 @@ class OpenAIModel(EndpointModel):
         prepared_request_dict = asdict(prepared_request)
         del prepared_request_dict['tool_prompt']
 
-        if prepared_request["response_format"]:
-            if not prepared_request["response_format"]["value"]:
-                prepared_request["response_format"]["type"] = "json_object"
-                del prepared_request["response_format"]["value"]
+        if prepared_request.response_format:
+            if not prepared_request.response_format.value:
+                prepared_request_dict["response_format"]["type"] = "json_object"
+                del prepared_request_dict["response_format"]["value"]
             else:
-                prepared_request["response_format"]["type"] = "json_schema"
-                prepared_request["response_format"]["json_schema"] = JSONSchema(
+                prepared_request_dict["response_format"]["type"] = "json_schema"
+                prepared_request_dict["response_format"]["json_schema"] = JSONSchema(
                     name=prepared_request["response_format"]["value"]["title"],
                     schema=prepared_request["response_format"]["value"],
-                    strict=True
+                    # I didn't reach a solution for this.
+                    strict=False
                 )
-                del prepared_request["response_format"]["value"]
+                del prepared_request_dict["response_format"]["value"]
 
         return client.chat.completions.create(**prepared_request_dict)
 

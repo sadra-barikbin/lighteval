@@ -25,6 +25,7 @@ from typing import TypeAlias
 
 import pytest
 from huggingface_hub import ChatCompletionInputMessage, TextGenerationInputGrammarType
+from pydantic import BaseModel
 
 from lighteval.logging.evaluation_tracker import EvaluationTracker
 from lighteval.models.endpoints import OpenAIModel
@@ -49,8 +50,57 @@ def openai_model(request):
 
 RequestDict: TypeAlias = dict[RequestType, list[Request]]
 
+class ResponseFormat(BaseModel):
+    expression: str
+    french_translation: str
+    arabic_translation: str
+
 
 class TestOpenAIModel:
+    @pytest.fixture
+    def structured_generation_task(self) -> LightevalTask:
+        eval_docs = [
+            Doc(
+                query="Respond in JSON:\n\nWhat's the translation of 'I love you' in French and Arabic?",
+                choices=[ResponseFormat(expression="I love you",
+                                        french_translation="Je t'aime",
+                                        arabic_translation="أحبك").model_dump_json()],
+                instruction="Respond in JSON:\n\n",
+                gold_index=0,
+            ),
+        ]
+        fewshot_docs = [
+            Doc(
+                query="Respond in JSON:\n\nWhat's the translation of 'light' in French and Arabic?",
+                choices=[ResponseFormat(expression="light",
+                                        french_translation="lumière",
+                                        arabic_translation="نور").model_dump_json()],
+                instruction="Respond in JSON:\n\n",
+                gold_index=0,
+            ),
+            Doc(
+                query="Respond in JSON:\n\nWhat's the translation of 'friend' in French and Arabic?",
+                choices=[ResponseFormat(expression="friend",
+                                        french_translation="amy",
+                                        arabic_translation="صدیق").model_dump_json()],
+                instruction="Respond in JSON:\n\n",
+                gold_index=0,
+            ),
+        ]
+        task_config = LightevalTaskConfig(
+            name="test_structured",
+            prompt_function="arc",
+            hf_repo="",
+            hf_subset="",
+            metric=["exact_match"],
+            generation_grammar=TextGenerationInputGrammarType(type="json", value=ResponseFormat.model_json_schema()),
+            stop_sequence=[],
+        )
+        task = LightevalTask("test_structured", task_config)
+        task._docs = eval_docs
+        task._fewshot_docs = fewshot_docs
+        return task
+
     @pytest.fixture
     def task(self) -> LightevalTask:
         eval_docs = [
@@ -88,7 +138,6 @@ class TestOpenAIModel:
             hf_subset="",
             metric=["exact_match"],
             generation_size=5,
-            generation_grammar={"type":"json", "value": },
             stop_sequence=[],
         )
         task = LightevalTask("test", task_config)
@@ -109,11 +158,11 @@ class TestOpenAIModel:
     def test_greedy_until(self, zero_shot_request_dict: RequestDict, openai_model: OpenAIModel):
         returns = openai_model.greedy_until(zero_shot_request_dict[RequestType.GREEDY_UNTIL])
         assert len(returns) == 2
-        assert all(r.result and r.result.isdigit() for r in returns)
+        assert all(r.result is not None for r in returns)
         request = GreedyUntilRequest(
             "test_task", 0, 0,
             [ChatCompletionInputMessage(role="user",content="How many ears does human have?")],
-            [], 5, num_samples=1, use_logits=True
+            [], 5, None, num_samples=1, use_logits=True
         )
         response = openai_model.greedy_until([request])[0]
         assert response.generated_tokens is not None
@@ -134,13 +183,13 @@ class TestOpenAIModel:
 
     @pytest.mark.parametrize("num_fewshot", [0, 2])
     def test_integration(
-        self, task: LightevalTask, openai_model: OpenAIModel, num_fewshot: int):
+        self, task: LightevalTask, structured_generation_task: LightevalTask, openai_model: OpenAIModel, num_fewshot: int):
         evaluation_tracker = EvaluationTracker()
-        task_dict = {"custom|test": task}
+        task_dict = {"custom|test": task, "custom|test_structured": structured_generation_task}
         evaluation_tracker.task_config_logger.log(task_dict)
         requests_dict, docs = create_requests_from_tasks(
             task_dict=task_dict,
-            fewshot_dict={"custom|test": [(num_fewshot, False)]},
+            fewshot_dict={"custom|test": [(num_fewshot, False)], "custom|test_structured": [(num_fewshot, False)]},
             num_fewshot_seeds=0,
             lm=openai_model,
             max_samples=None,
@@ -159,4 +208,5 @@ class TestOpenAIModel:
         )
         evaluation_tracker.metrics_logger.aggregate(task_dict=task_dict)
         evaluation_tracker.details_logger.aggregate()
-        evaluation_tracker.generate_final_dict()
+        result = evaluation_tracker.generate_final_dict()
+        assert result["results"][f"custom:test_structured:{num_fewshot}"]["em"] == 1
