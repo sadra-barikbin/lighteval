@@ -242,7 +242,7 @@ class LightevalTask:
         self.generation_size = cfg.generation_size
         self.generation_grammar = cfg.generation_grammar
         self.stop_sequence = cfg.stop_sequence
-        self.answer_extractor = cfg.answer_extractor
+        self.answer_extractor =  AnswerExtractor.from_dict(cfg.answer_extractor) if cfg.answer_extractor else None
         self.must_remove_duplicate_docs = cfg.must_remove_duplicate_docs
         if self.must_remove_duplicate_docs is None:
             self.must_remove_duplicate_docs = False

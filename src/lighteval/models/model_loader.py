@@ -101,9 +101,11 @@ def load_3rd_party_endpoint_model(config: EndpointConfig):
     match config.type:
         case "anthropic":
             model = AnthropicModel(config.model_id)
+            info = ModelInfo(f"anthropic/{config.model_id}")
         case "openai":
             model = OpenAIModel(config.model_id)
-    return model, ModelInfo(config.model_id)
+            info = ModelInfo(f"openai/{config.model_id}")
+    return model, info
 
 
 def load_model_with_inference_endpoints(config: Union[InferenceEndpointModelConfig, InferenceModelConfig], env_config: EnvConfig):
