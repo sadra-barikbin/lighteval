@@ -142,6 +142,7 @@ class EndpointModel(LightevalModel):
                     max_new_tokens=max_tokens,
                     stop=stop,
                     return_full_text=False,
+                    grammar=grammar,
                     top_n_tokens=1,
                 ),
             )
