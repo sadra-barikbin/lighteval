@@ -129,6 +129,8 @@ class DynamicBatchDataset(Dataset):
         """
         for split_id in range(self.dataset_splits):
             yield self.get_split_start_end(split_id)
+            if self.split_end >= self.total_size:
+                break
 
     def __getitem__(self, index) -> Request:
         """

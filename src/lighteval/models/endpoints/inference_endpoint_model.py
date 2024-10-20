@@ -174,18 +174,16 @@ class InferenceEndpointModel(EndpointModel):
         if is_chat:
             logits = [t.logprob for t in response.choices[0].logprobs.content]
             input_tokens = request.tokenized_context
-            generated_tokens = self.tokenizer.convert_tokens_to_ids(
-                [t.token for t in response.choices[0].logprobs.content]
-            )
+            result = response.choices[0].message.content
         else:
             logits = [t.logprob for t in response.details.tokens]
             input_tokens = [t.id for t in response.details.prefill]
-            generated_tokens = [t.id for t in response.details.tokens]
+            result = response.generated_text
         return GenerateReturn(
-            result=response.choices[0].message.content if is_chat else response.generated_text,
+            result=result ,
             logits=logits if request.use_logits else None,
             input_tokens=input_tokens,
-            generated_tokens=generated_tokens,
+            generated_tokens=self.tokenizer.encode(result),
             truncated_tokens_count=-1,
             padded_tokens_count=-1,
         )

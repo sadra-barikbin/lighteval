@@ -93,7 +93,7 @@ class AnswerExtractor:
         ...
     
     @abstractmethod
-    def as_dict() -> dict:
+    def as_dict(self) -> dict:
         ...
     
     # Bad hack. Thanks to LightevalTaskConfig's becoming dict in the beginning of the evaluation!
