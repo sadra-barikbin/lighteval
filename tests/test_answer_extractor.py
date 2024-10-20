@@ -2,7 +2,7 @@ import re
 import random
 import pytest
 
-from lighteval.models.model_output import RegexAnswerExtractor
+from lighteval.models.model_output import RegexAnswerExtractor, SeparatorAnswerExtractor
 from lighteval.evaluator import EvaluationTracker, evaluate
 from lighteval.metrics import Metrics
 from lighteval.models.base_model import BaseModel
@@ -13,7 +13,7 @@ from lighteval.tasks.requests import (
 )
 
 
-def test_answer_extractor():
+def test_regex_answer_extractor():
     # MMLU-Pro
     extractor = RegexAnswerExtractor(
         [re.compile(r"answer is \(?\(([A-J])\)?\)"),
@@ -32,6 +32,12 @@ def test_answer_extractor():
 
     extractor.fallback = 0
     assert extractor("I don't know", ["A", "B", "C", "D"]) == "A"
+
+
+def test_separator_answer_extractor():
+    extractor = SeparatorAnswerExtractor(r"[,،]")
+    extractor("Book, Hook , Cook", ["A", "B", "C", "D"]) == ["Book", "Hook", "Cook"]
+    extractor("کتاب علی ، لباس ، نبراس, قطع", ["A", "B", "C", "D"]) == ["کتاب علی", "لباس", "نبراس", "قطع"]
 
 
 @pytest.fixture(scope="module")

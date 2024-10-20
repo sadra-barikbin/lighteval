@@ -99,8 +99,12 @@ class AnswerExtractor:
     # Bad hack. Thanks to LightevalTaskConfig's becoming dict in the beginning of the evaluation!
     # Maybe it's fixed now in main branch.
     @classmethod
-    def from_dict(cls, properties: dict[str, Any]) -> "AnswerExtractor":
-        return RegexAnswerExtractor(properties["regex_list"], properties["fallback"])
+    def from_dict(cls, extractor_dict: dict[str, Any]) -> "AnswerExtractor":
+        match extractor_dict["type"]:
+            case "regex":
+                return RegexAnswerExtractor(extractor_dict["regex_list"], extractor_dict["fallback"])
+            case "separator":
+                return SeparatorAnswerExtractor(extractor_dict["separator"])
 
 
 class RegexAnswerExtractor(AnswerExtractor):
@@ -122,6 +126,21 @@ class RegexAnswerExtractor(AnswerExtractor):
     
     def as_dict(self) -> dict:
         return {
+            "type": "regex",
             "regex_list": [p.pattern for p in self.regex_list],
             "fallback": self.fallback
+        }
+
+
+class SeparatorAnswerExtractor(AnswerExtractor):
+    def __init__(self, separator_pattern: str|re.Pattern):
+        self.separator = re.compile(separator_pattern)
+
+    def __call__(self, result: str, choices: list[str]) -> list[str]:
+        return [item.strip() for item in re.split(self.separator, result)]
+    
+    def asdict(self):
+        return {
+            "type": "separator",
+            "separator": self.separator
         }
