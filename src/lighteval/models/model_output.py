@@ -105,6 +105,8 @@ class AnswerExtractor:
                 return RegexAnswerExtractor(extractor_dict["regex_list"], extractor_dict["fallback"])
             case "separator":
                 return SeparatorAnswerExtractor(extractor_dict["separator"])
+            case _:
+                raise ValueError("Unknown answer extractor type")
 
 
 class RegexAnswerExtractor(AnswerExtractor):
@@ -139,8 +141,8 @@ class SeparatorAnswerExtractor(AnswerExtractor):
     def __call__(self, result: str, choices: list[str]) -> list[str]:
         return [item.strip() for item in re.split(self.separator, result)]
     
-    def asdict(self):
+    def as_dict(self):
         return {
             "type": "separator",
-            "separator": self.separator
+            "separator": self.separator.pattern
         }
