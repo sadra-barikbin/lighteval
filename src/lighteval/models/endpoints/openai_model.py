@@ -49,7 +49,7 @@ if is_openai_available():
 
 
 class OpenAIModel(EndpointModel):
-    _DEFAULT_MAX_LENGTH = 2048
+    _DEFAULT_MAX_LENGTH = 8192
 
     def __init__(self, model_id: str):
         import openai
