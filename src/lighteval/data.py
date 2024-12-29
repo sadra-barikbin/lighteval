@@ -21,11 +21,16 @@
 # SOFTWARE.
 
 from typing import Iterator
+from packaging.version import Version
 
 import math
 import torch
 from torch.utils.data import Dataset
-from torch.utils.data.distributed import DistributedSampler, T_co
+from torch.utils.data.distributed import DistributedSampler
+if Version(torch.__version__) >= Version("2.4"):
+    from torch.utils.data.distributed import _T_co as T_co
+else:
+    from torch.utils.data.distributed import T_co
 
 from lighteval.logging.hierarchical_logger import hlog_warn
 from lighteval.tasks.requests import (
