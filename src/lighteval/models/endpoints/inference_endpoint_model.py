@@ -120,6 +120,11 @@ class InferenceEndpointModel(EndpointModel):
             self.revision = "main"
             self.async_client = AsyncInferenceClient(model=config.model, token=env_config.token)
             self.client = InferenceClient(model=config.model, token=env_config.token)
+            model_info = self.client.get_endpoint_info()
+            if "max_input_tokens" in model_info:
+                self._max_length = model_info["max_input_tokens"]
+            else:
+                self._max_length = None
 
         self.use_async = False  # set to False for debug - async use is faster
 
