@@ -39,7 +39,6 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from lighteval.logging.hierarchical_logger import hlog_warn, hlog_err
 from lighteval.metrics.imports.bert_scorer import BERTScorer
-from lighteval.metrics.imports.data_stats_metric import DataStatsMetric
 from lighteval.metrics.imports.summac import SummaCZS
 from lighteval.metrics.llm_as_judge import JudgeOpenAI
 from lighteval.metrics.normalizations import remove_braces, remove_braces_and_strip
@@ -490,12 +489,7 @@ class BertScore:
 def extractiveness(formatted_doc: Doc, predictions: list[str], **kwargs):
     inp = remove_braces(formatted_doc.specific["text"])
     pred = remove_braces_and_strip(predictions[0])
-    stats = DataStatsMetric().evaluate_example(pred, inp)
-    return {
-        "summarization_coverage": stats["coverage"],
-        "summarization_density": stats["density"],
-        "summarization_compression": stats["compression"],
-    }
+    raise RuntimeError("Not implemented")
 
 
 # todo: make into clean classes with call to normalizer

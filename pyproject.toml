@@ -68,7 +68,6 @@ dependencies = [
     # Base metrics
     "nltk==3.8.1",
     "scikit-learn",
-    "spacy==3.7.5",
     "sacrebleu",
     "rouge_score==0.1.2",
     "sentencepiece>=0.1.99",
